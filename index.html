@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Acorn AR Viewer</title>
+    <title>Acorn & Pine AR Viewer</title>
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
     
     <style>
@@ -11,100 +11,162 @@
             height: 100%;
             margin: 0;
             padding: 0;
-            overflow: hidden; /* 画面自体のスクロールを禁止 */
-            background-color: #f0f0f0; /* 背景を少しグレーにして見やすく */
+            overflow: hidden;
+            background-color: #f0f0f0;
         }
-        
+
+        /* 上下の分割レイアウト用コンテナ */
+        .split-container {
+            display: flex;
+            flex-direction: column; /* 縦に並べる */
+            height: 100%;
+            width: 100%;
+        }
+
+        /* 各ビューワーのラッパー（画面の半分を使う） */
+        .viewer-wrapper {
+            flex: 1; /* 均等に分割 */
+            position: relative;
+            border-bottom: 2px solid #fff; /* 区切り線 */
+            overflow: hidden;
+        }
+
         model-viewer {
             width: 100%;
             height: 100%;
-            /* ★最重要：タッチ操作を3Dモデル専用にする設定 */
             touch-action: none; 
             --poster-color: transparent;
+            background-color: #fafafa; /* 薄いグレー */
         }
 
-        /* ARボタンのデザイン調整（より押しやすく） */
-        #ar-button {
+        /* 2つ目の背景色を少し変えて区別しやすくする */
+        #viewer-pine {
+            background-color: #eefcfc; 
+        }
+
+        /* ARボタン（共通デザイン） */
+        .ar-button {
             position: absolute; 
-            bottom: 40px; 
+            bottom: 20px; 
             left: 50%; 
             transform: translateX(-50%);
-            border-radius: 30px; 
+            border-radius: 20px; 
             border: none; 
             background-color: #007aff; 
             color: white;
-            padding: 15px 30px; 
-            font-size: 16px; 
+            padding: 10px 20px; 
+            font-size: 14px; 
             font-weight: bold; 
             cursor: pointer;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3); /* 影をつけて浮き上がらせる */
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
             z-index: 10;
+            white-space: nowrap;
         }
         
-        /* ボタンを押した時の見た目 */
-        #ar-button:active {
+        .ar-button:active {
             transform: translateX(-50%) scale(0.95);
             background-color: #005ecb;
         }
 
-        /* 写真ボタンも調整 */
-        #screenshot-button {
-            position: absolute; top: 20px; right: 20px; /* 右上に移動 */
-            border-radius: 50%; /* 丸くする */
-            width: 50px; height: 50px;
+        /* 写真ボタン（共通デザイン） */
+        .screenshot-button {
+            position: absolute; 
+            top: 15px; 
+            right: 15px;
+            border-radius: 50%;
+            width: 40px; height: 40px;
             border: none;
             background-color: white; 
             color: black;
-            font-size: 24px; 
+            font-size: 20px; 
             cursor: pointer;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
             display: flex; align-items: center; justify-content: center;
             z-index: 10;
+        }
+        
+        .screenshot-button:active {
+            background-color: #eee;
         }
     </style>
 </head>
 <body>
 
-    <model-viewer
-        id="viewer"
-        src="acorn.glb"
-        ios-src="acorn.usdz"
-        ar
-        ar-modes="webxr scene-viewer quick-look"
-        camera-controls
-        shadow-intensity="1"
-        disable-tap
-        interaction-prompt="none"
-        alt="A 3D model of a acorn"
-        scale="0.1 0.1 0.1">
+    <div class="split-container">
         
-        <button slot="ar-button" id="ar-button">
-            ARで表示する
-        </button>
-    </model-viewer>
+        <div class="viewer-wrapper">
+            <model-viewer
+                id="viewer-acorn"
+                src="acorn.glb"
+                ios-src="acorn.usdz"
+                ar
+                ar-modes="webxr scene-viewer quick-look"
+                camera-controls
+                shadow-intensity="1"
+                disable-tap
+                interaction-prompt="none"
+                alt="A 3D model of an acorn"
+                scale="0.1 0.1 0.1">
+                
+                <button slot="ar-button" class="ar-button">
+                    AR (ドングリ)
+                </button>
+            </model-viewer>
+            <button class="screenshot-button" data-target="viewer-acorn">📷</button>
+        </div>
 
-    <button id="screenshot-button">📷</button>
+        <div class="viewer-wrapper">
+            <model-viewer
+                id="viewer-pine"
+                src="pine.glb"
+                ios-src="pine.usdz"
+                ar
+                ar-modes="webxr scene-viewer quick-look"
+                camera-controls
+                shadow-intensity="1"
+                disable-tap
+                interaction-prompt="none"
+                alt="A 3D model of a pine"
+                scale="0.1 0.1 0.1">
+                
+                <button slot="ar-button" class="ar-button">
+                    AR (パイン)
+                </button>
+            </model-viewer>
+            <button class="screenshot-button" data-target="viewer-pine">📷</button>
+        </div>
+
+    </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const modelViewer = document.querySelector('#viewer');
-            const screenshotButton = document.querySelector('#screenshot-button');
+            // すべてのスクショボタンを取得
+            const screenshotButtons = document.querySelectorAll('.screenshot-button');
 
-            screenshotButton.addEventListener('click', () => {
-                // 画質を上げるために一時的にピクセル比を上げる
-                const originalPixelRatio = modelViewer.pixelRatio;
-                modelViewer.pixelRatio = 2; 
-                
-                // スクショ撮影
-                const dataURL = modelViewer.toDataURL({mimeType: 'image/png', qualityArgument: 1});
-                
-                // 元に戻す
-                modelViewer.pixelRatio = originalPixelRatio;
+            screenshotButtons.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    // ボタンの data-target 属性から対象のIDを取得
+                    const targetId = btn.getAttribute('data-target');
+                    const modelViewer = document.getElementById(targetId);
 
-                const link = document.createElement('a');
-                link.href = dataURL;
-                link.download = 'acorn-ar-photo.png';
-                link.click();
+                    if (modelViewer) {
+                        // 画質を上げるために一時的にピクセル比を上げる
+                        const originalPixelRatio = modelViewer.pixelRatio;
+                        modelViewer.pixelRatio = 2; 
+                        
+                        // スクショ撮影
+                        const dataURL = modelViewer.toDataURL({mimeType: 'image/png', qualityArgument: 1});
+                        
+                        // 元に戻す
+                        modelViewer.pixelRatio = originalPixelRatio;
+
+                        // ダウンロード処理
+                        const link = document.createElement('a');
+                        link.href = dataURL;
+                        link.download = targetId + '-photo.png';
+                        link.click();
+                    }
+                });
             });
         });
     </script>
