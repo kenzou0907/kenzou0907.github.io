@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Debug Mode</title>
+    <title>AR Manual Start</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
@@ -9,108 +9,194 @@
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 
     <style>
+        /* 基本設定: スクロール禁止、背景透明 */
         body, html {
-            margin: 0; padding: 0; width: 100%; height: 100%;
-            overflow: hidden; background-color: black;
+            width: 100%; height: 100%;
+            margin: 0; padding: 0; overflow: hidden;
+            background-color: transparent !important;
+            touch-action: none;
         }
-        
-        /* コンソールログ表示エリア (画面上部) */
-        #console-log {
-            position: fixed; top: 0; left: 0; width: 100%; height: 50%;
-            background: rgba(0,0,0,0.7); pointer-events: none; z-index: 99999;
-            overflow-y: scroll; color: lime; font-family: monospace; font-size: 12px;
-            padding: 10px; box-sizing: border-box;
-            display: block; /* 強制表示 */
+
+        /* A-Frameのキャンバス透明化 */
+        .a-canvas {
+            background-color: transparent !important;
         }
-        .log-line { margin-bottom: 4px; border-bottom: 1px solid #333; }
-        .error-line { color: #FF4444; font-weight: bold; background: rgba(50,0,0,0.5); }
-        .warn-line { color: #FFFF00; }
+
+        /* カメラ映像の強制背景化 */
+        #arjs-video {
+            position: absolute !important;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -100 !important;
+            display: block !important;
+            object-fit: cover !important;
+            background-color: black; /* 映像が来るまでは黒 */
+        }
+
+        /* スタート画面（手動起動ボタン） */
+        #launcher {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 99999;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+        }
+        #launch-btn {
+            padding: 20px 40px; font-size: 20px; font-weight: bold;
+            color: white; background: #007AFF; border: none; border-radius: 50px;
+            box-shadow: 0 0 20px #007AFF; cursor: pointer;
+        }
+        #error-msg {
+            color: #FF4444; margin-top: 20px; padding: 10px;
+            font-family: monospace; background: rgba(50,0,0,0.8);
+            display: none;
+        }
+
+        /* デバッグログ */
+        #debug-log {
+            position: fixed; bottom: 10px; left: 10px;
+            color: #00FF00; font-family: monospace; font-size: 12px;
+            text-shadow: 1px 1px 1px black; pointer-events: none; z-index: 9000;
+        }
     </style>
 
     <script>
-        // --- 画面上のコンソール機能 ---
-        function logToScreen(msg, type='info') {
-            const consoleEl = document.getElementById('console-log');
-            if (!consoleEl) return;
-            
-            const line = document.createElement('div');
-            line.className = 'log-line ' + (type === 'error' ? 'error-line' : '');
-            // 時間を表示
-            const time = new Date().toLocaleTimeString();
-            line.innerText = `[${time}] ${msg}`;
-            
-            consoleEl.appendChild(line);
-            consoleEl.scrollTop = consoleEl.scrollHeight; // 最新へスクロール
+        function log(msg) {
+            const el = document.getElementById('debug-log');
+            if(el) el.innerText = msg;
             console.log(msg);
         }
 
-        // エラーを捕捉して表示
-        window.onerror = function(msg, url, line, col, error) {
-            logToScreen(`ERROR: ${msg} (Line:${line})`, 'error');
-            return false;
-        };
+        // --- カメラ強制起動プロセス ---
+        async function startCamera() {
+            const btn = document.getElementById('launch-btn');
+            const errEl = document.getElementById('error-msg');
+            btn.innerText = "Requesting Camera...";
+            
+            try {
+                // 1. まずブラウザのカメラAPIを直接叩いて許可を取る
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: false,
+                    video: { facingMode: "environment" }
+                });
+                
+                log("Camera Permission Granted!");
+                
+                // ストリームを一瞬だけ停止（AR.jsに引き渡すため）
+                stream.getTracks().forEach(track => track.stop());
 
-        // 読み込みチェック
-        window.addEventListener('load', () => {
-            logToScreen("Page Loaded. Checking environment...");
+                // 2. スタート画面を消してARシーンを表示
+                document.getElementById('launcher').style.display = 'none';
+                
+                // 3. A-Frameのシーンを開始
+                const scene = document.querySelector('a-scene');
+                scene.play();
+                
+                log("AR Scene Started.");
 
-            // 1. プロトコルチェック
-            if (location.protocol !== 'https:') {
-                logToScreen("WARNING: You are using HTTP. Camera requires HTTPS!", 'error');
-                alert("警告: HTTPSでアクセスしてください。カメラが起動しません。");
-            } else {
-                logToScreen("Protocol is HTTPS (OK).");
+            } catch (err) {
+                console.error(err);
+                btn.innerText = "RETRY";
+                errEl.style.display = 'block';
+                errEl.innerText = "Error: " + err.name + " - " + err.message + "\nEnsure you are using HTTPS and allowed camera.";
             }
+        }
 
-            // 2. WebGLチェック
-            const canvas = document.createElement('canvas');
-            const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-            if (!gl) {
-                logToScreen("CRITICAL: WebGL not supported!", 'error');
-            } else {
-                logToScreen("WebGL is supported.");
+        // --- ドラッグ操作 ---
+        AFRAME.registerComponent('drag-wrapper', {
+            init: function () {
+                this.isDragging = false;
+                this.speed = 5.0; 
+
+                // タッチ開始
+                this.el.addEventListener('mousedown', () => {
+                    this.isDragging = true;
+                    this.el.querySelector('.hit-box').setAttribute('opacity', '0.3');
+                    log("Dragging...");
+                });
+
+                // タッチ終了
+                window.addEventListener('mouseup', () => {
+                    this.isDragging = false;
+                    this.el.querySelector('.hit-box').setAttribute('opacity', '0.01');
+                    log("Released.");
+                });
+
+                // 移動ロジック
+                const updatePos = (cx, cy) => {
+                    if (!this.isDragging) return;
+                    const sx = (cx / window.innerWidth) * 2 - 1;
+                    const sy = -(cy / window.innerHeight) * 2 + 1;
+                    this.el.object3D.position.x = sx * this.speed;
+                    this.el.object3D.position.y = (sy * this.speed) + 1.6;
+                };
+
+                window.addEventListener('touchmove', (e) => {
+                    if(e.cancelable) e.preventDefault(); // スクロール阻止
+                    if(this.isDragging) updatePos(e.touches[0].clientX, e.touches[0].clientY);
+                }, { passive: false });
+
+                window.addEventListener('mousemove', (e) => {
+                    if(this.isDragging) updatePos(e.clientX, e.clientY);
+                });
             }
         });
 
-        // A-Frameのシーン読み込み完了
-        AFRAME.registerComponent('scene-logger', {
-            init: function() {
-                logToScreen("A-Frame Scene Initialized.");
-                
-                const scene = this.el.sceneEl;
-                scene.addEventListener('camera-init', (data) => {
-                    logToScreen("AR.js Camera Initialized!");
-                });
-                
-                scene.addEventListener('camera-error', (error) => {
-                    logToScreen("AR.js Camera Error: " + JSON.stringify(error), 'error');
-                });
+        // --- 衝突判定 ---
+        AFRAME.registerComponent('collision-check', {
+            tick: function () {
+                const w1 = document.querySelector('#wrapper-acorn');
+                const w2 = document.querySelector('#wrapper-pain');
+                if (!w1 || !w2) return;
+
+                const dist = w1.object3D.position.distanceTo(w2.object3D.position);
+
+                if (dist < 1.2) {
+                    document.getElementById('status-msg').innerText = "HIT !!";
+                    document.getElementById('status-msg').style.color = "red";
+                    w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
+                } else {
+                    document.getElementById('status-msg').innerText = "Drag to Hit";
+                    document.getElementById('status-msg').style.color = "yellow";
+                    w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = 0;
+                }
             }
         });
     </script>
 </head>
 
 <body>
-    <div id="console-log">
-        <div class="log-line">System initializing...</div>
+    <div id="launcher">
+        <button id="launch-btn" onclick="startCamera()">TAP TO START CAMERA</button>
+        <div id="error-msg"></div>
+        <p style="color:#aaa; margin-top:15px;">Works on Android & iOS (Safari)</p>
+    </div>
+
+    <div id="debug-log">System Ready.</div>
+    <div id="status-msg" style="position:fixed; top:20px; width:100%; text-align:center; color:yellow; font-weight:bold; font-size:24px; text-shadow:2px 2px 2px black; z-index:9000; pointer-events:none;">
+        Waiting...
     </div>
 
     <a-scene embedded 
-             arjs="sourceType: webcam; debugUIEnabled: false;"
+             arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
              renderer="logarithmicDepthBuffer: true; colorManagement: true; alpha: true;"
              vr-mode-ui="enabled: false"
-             scene-logger>
+             cursor="rayOrigin: mouse" 
+             raycaster="objects: .clickable"
+             collision-check>
 
-        <a-entity camera position="0 1.6 0"></a-entity>
+        <a-entity camera look-controls="touchEnabled: false" position="0 1.6 0"></a-entity>
 
-        <a-entity light="type: ambient; intensity: 1.0; color: #fff;"></a-entity>
-        <a-entity light="type: directional; intensity: 1.0; position: 1 1 1;"></a-entity>
+        <a-entity light="type: ambient; intensity: 2.5; color: #fff;"></a-entity>
+        <a-entity light="type: directional; intensity: 2.0; position: 1 2 1;"></a-entity>
 
-        <a-box position="0 0 -2" 
-               color="red" 
-               scale="0.5 0.5 0.5"
-               animation="property: rotation; to: 0 360 0; loop: true; dur: 3000">
-        </a-box>
+        <a-entity id="wrapper-acorn" position="-1.0 1.6 -3.0" drag-wrapper>
+            <a-box class="hit-box clickable" scale="1.5 1.5 1.5" material="color:red; opacity:0.01; transparent:true;"></a-box>
+            <a-entity gltf-model="url(acorn.glb)" scale="12 12 12" position="0 -0.5 0"></a-entity>
+        </a-entity>
+
+        <a-entity id="wrapper-pain" position="1.0 1.6 -3.0" drag-wrapper>
+            <a-box class="hit-box clickable" scale="1.5 1.5 1.5" material="color:red; opacity:0.01; transparent:true;"></a-box>
+            <a-entity gltf-model="url(pain.glb)" scale="0.012 0.012 0.012" position="0 -0.5 0"></a-entity>
+        </a-entity>
 
     </a-scene>
 </body>
