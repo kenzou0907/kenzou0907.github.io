@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Auto Start</title>
+    <title>AR Diagnostics & Fix</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
@@ -9,88 +9,134 @@
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 
     <style>
-        /* 全体の設定：スクロール禁止 & 背景透明化 */
+        /* === レイアウトとレイヤー設定 === */
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
-            overflow: hidden;
-            background-color: transparent !important; 
-            touch-action: none;
-        }
-        
-        /* A-Frameキャンバスの透明化 */
-        .a-canvas {
-            background-color: transparent !important;
-            display: block !important;
+            overflow: hidden; background-color: black; /* 初期は黒 */
+            touch-action: none; /* スワイプでの画面スクロール禁止 */
         }
 
-        /* カメラ映像（videoタグ）を最背面に固定 */
+        /* レイヤー1: AR.jsのビデオ (最背面) */
         #arjs-video {
             position: absolute !important;
             top: 0; left: 0; width: 100%; height: 100%;
-            z-index: -100 !important;
-            display: block !important;
+            z-index: 1 !important; 
             object-fit: cover !important;
+            display: block !important;
+        }
+
+        /* レイヤー2: A-Frameの3Dキャンバス (透明にして重ねる) */
+        .a-canvas {
+            position: absolute !important;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 2 !important;
             background-color: transparent !important;
         }
 
-        /* デバッグ用表示エリア */
-        #debug-ui {
-            position: fixed; bottom: 10px; left: 10px; 
-            z-index: 9999; pointer-events: none;
+        /* レイヤー3: UIとボタン (最前面) */
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 9999 !important;
+            pointer-events: none; /* UI以外のタッチは下の3Dへ通す */
         }
-        .log-text {
-            color: #00FF00; font-family: monospace; font-size: 12px;
-            text-shadow: 1px 1px 1px black; background: rgba(0,0,0,0.6);
-            padding: 2px 5px; margin-bottom: 2px; display: block;
+
+        /* スタートボタン */
+        #start-btn {
+            position: absolute; top: 50%; left: 50%; 
+            transform: translate(-50%, -50%);
+            padding: 20px 50px; font-size: 20px; font-weight: bold;
+            color: white; background: #4CC3D9; border: none; border-radius: 50px;
+            box-shadow: 0 0 20px rgba(76, 195, 217, 0.8);
+            pointer-events: auto; cursor: pointer;
+            display: none; /* JSで表示制御 */
         }
-        .error-text {
-            color: #FF0000; font-weight: bold; font-size: 14px;
-            background: rgba(255,255,255,0.8); padding: 5px;
+
+        /* デバッグログ表示 */
+        #debug-console {
+            position: absolute; bottom: 10px; left: 10px; 
+            font-family: monospace; font-size: 12px; color: #0f0;
+            background: rgba(0,0,0,0.7); padding: 10px;
+            max-width: 90%; pointer-events: none;
         }
+        .err { color: #ff4444; font-weight: bold; }
     </style>
 
     <script>
-        // 画面にログを出す関数
-        function log(msg, isError = false) {
-            const container = document.getElementById('debug-ui');
-            const div = document.createElement('div');
-            div.className = isError ? 'error-text' : 'log-text';
-            div.innerText = msg;
-            container.appendChild(div);
+        // ログ出力関数
+        function log(msg, type='') {
+            const el = document.getElementById('debug-log');
+            if(!el) return;
+            const line = document.createElement('div');
+            line.className = type;
+            line.innerText = `> ${msg}`;
+            el.appendChild(line);
             console.log(msg);
-            
-            // 古いログは消す
-            if (container.children.length > 5) container.removeChild(container.firstChild);
         }
 
-        // エラー捕捉
-        window.onerror = function(message, source, lineno, colno, error) {
-            log("ERR: " + message, true);
-        };
+        window.addEventListener('DOMContentLoaded', () => {
+            const btn = document.getElementById('start-btn');
+            const logEl = document.getElementById('debug-log');
+            
+            log("System Init...");
 
-        // --- ドラッグ操作 ---
+            // 1. HTTPSチェック
+            if (location.protocol !== 'https:' && location.hostname !== 'localhost' && !location.hostname.startsWith('127.0')) {
+                log("ERROR: Not HTTPS!", 'err');
+                log("Camera requires HTTPS.", 'err');
+                alert("【重要】カメラを使うにはHTTPSが必要です。GitHub Pagesなどを利用してください。");
+                return;
+            } else {
+                log("Secure Context: OK");
+            }
+
+            // 2. ボタンを表示して待機
+            btn.style.display = 'block';
+            btn.innerText = "START AR";
+
+            // 3. ボタンクリックイベント
+            btn.addEventListener('click', () => {
+                btn.style.display = 'none';
+                log("Requesting Camera...");
+
+                // カメラ権限を明示的に要求
+                navigator.mediaDevices.getUserMedia({ video: true })
+                    .then((stream) => {
+                        log("Camera Permission: GRANTED");
+                        log("Starting A-Frame...");
+                        // ビデオタグの設定補正 (AR.jsのバグ対策)
+                        const video = document.getElementById('arjs-video');
+                        if(video) video.play();
+                    })
+                    .catch((err) => {
+                        log("Camera Error: " + err.name, 'err');
+                        alert("カメラの起動に失敗しました。\n設定でブラウザのカメラ権限を確認してください。");
+                        btn.style.display = 'block'; // ボタンを戻す
+                    });
+            });
+        });
+
+        // --- ドラッグ操作コンポーネント ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isDragging = false;
                 this.speed = 5.0; 
+                this.hitBox = this.el.querySelector('.hit-box');
 
                 // タッチ開始
-                this.el.addEventListener('mousedown', () => {
+                this.el.addEventListener('mousedown', (e) => {
                     this.isDragging = true;
-                    this.el.querySelector('.hit-box').setAttribute('opacity', '0.3'); // 操作中は少し見えるようにする
-                    log("Touch Start");
+                    this.hitBox.setAttribute('opacity', '0.3'); // 操作中は少し見えるように
                 });
 
                 // タッチ終了
                 window.addEventListener('mouseup', () => {
-                    if (this.isDragging) {
+                    if(this.isDragging) {
                         this.isDragging = false;
-                        this.el.querySelector('.hit-box').setAttribute('opacity', '0.01'); // 透明に戻す
-                        log("Touch End");
+                        this.hitBox.setAttribute('opacity', '0.01'); // 透明に戻す
                     }
                 });
 
-                // 移動処理 (スマホ/PC共通)
+                // 移動処理
                 const moveHandler = (clientX, clientY) => {
                     if (!this.isDragging) return;
                     const screenX = (clientX / window.innerWidth) * 2 - 1;
@@ -99,15 +145,15 @@
                     this.el.object3D.position.y = (screenY * this.speed) + 1.6;
                 };
 
+                // スマホ用
                 window.addEventListener('touchmove', (e) => {
                     if (!this.isDragging) return;
-                    if(e.cancelable) e.preventDefault(); // スクロール防止
+                    if(e.cancelable) e.preventDefault();
                     moveHandler(e.touches[0].clientX, e.touches[0].clientY);
                 }, { passive: false });
 
-                window.addEventListener('mousemove', (e) => {
-                    moveHandler(e.clientX, e.clientY);
-                });
+                // PC用
+                window.addEventListener('mousemove', (e) => moveHandler(e.clientX, e.clientY));
             }
         });
 
@@ -116,36 +162,37 @@
             tick: function () {
                 const w1 = document.querySelector('#wrapper-acorn');
                 const w2 = document.querySelector('#wrapper-pain');
+                const txt = document.getElementById('status-msg');
                 if (!w1 || !w2) return;
 
                 const dist = w1.object3D.position.distanceTo(w2.object3D.position);
+                const model = w2.querySelector('a-entity[gltf-model]');
 
                 if (dist < 1.2) {
-                    w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
-                    // 衝突時はログを更新しない（重くなるため）
+                    txt.innerText = "HIT !!";
+                    txt.style.color = "red";
+                    model.object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
                 } else {
-                    w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = 0;
+                    txt.innerText = "Drag Invisible Box";
+                    txt.style.color = "yellow";
+                    model.object3D.rotation.z = 0;
                 }
             }
-        });
-
-        // ロード完了時のログ
-        window.addEventListener('load', () => {
-            log("Page Loaded. Waiting for Camera...");
-            
-            // カメラが生成されたかチェック
-            setTimeout(() => {
-                const video = document.getElementById('arjs-video');
-                if (video) log("Camera Element Found.");
-                else log("Waiting for Camera...");
-            }, 2000);
         });
     </script>
 </head>
 
 <body>
-    <div id="debug-ui">
-        <div class="log-text">Initializing...</div>
+    <div id="ui-layer">
+        <button id="start-btn">Loading...</button>
+        
+        <div id="status-msg" style="position:absolute; top:20px; width:100%; text-align:center; color:yellow; font-size:20px; font-weight:bold; text-shadow:2px 2px 2px black;">
+            Wait for Start
+        </div>
+
+        <div id="debug-console">
+            <div id="debug-log"></div>
+        </div>
     </div>
 
     <a-scene embedded 
