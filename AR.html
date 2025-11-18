@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR HitBox Test</title>
+    <title>AR Mobile Drag Fixed</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
@@ -9,7 +9,14 @@
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 
     <style>
-        /* UI */
+        /* 【重要】スマホでのスクロール・ズームを完全禁止にする設定 */
+        body, html {
+            width: 100%; height: 100%;
+            margin: 0; padding: 0; overflow: hidden;
+            touch-action: none; /* これがスワイプで動かない原因への対策 */
+        }
+
+        /* UI周り */
         #ui-layer {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none; z-index: 9999;
@@ -24,86 +31,97 @@
             position: absolute; bottom: 20px; left: 10px; 
             color: lime; font-family: monospace; font-size: 14px;
             text-shadow: 1px 1px 1px black;
+            background: rgba(0,0,0,0.7); padding: 5px;
         }
         #start-btn {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
             padding: 20px 40px; font-size: 24px; background: #FF4444; color: white;
-            border: none; border-radius: 10px; z-index: 10000;
+            border: none; border-radius: 10px; z-index: 10000; cursor: pointer;
         }
     </style>
 
     <script>
         function log(msg) {
-            document.getElementById('debug-text').innerHTML = msg;
-            console.log(msg);
+            const el = document.getElementById('debug-text');
+            if(el) el.innerHTML = msg;
         }
 
-        // --- ドラッグ操作 (親要素を動かす) ---
+        // --- ドラッグ操作 (スマホ対応強化版) ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isDragging = false;
-                this.speed = 4.0;
+                this.speed = 5.0; // 移動感度
 
-                // タッチ開始 (赤い箱に触れたら)
+                // A. タッチ開始
                 this.el.addEventListener('mousedown', (e) => {
                     this.isDragging = true;
-                    this.el.querySelector('.hit-box').setAttribute('material', 'color', '#00FF00'); // 緑に変える
+                    this.el.querySelector('.hit-box').setAttribute('material', 'color', '#00FF00'); 
                     this.el.querySelector('.hit-box').setAttribute('opacity', '0.5');
-                    log("Touched: " + this.el.id);
+                    log("Touch Start");
                 });
 
-                // タッチ終了
+                // B. タッチ終了
                 window.addEventListener('mouseup', () => {
                     if (this.isDragging) {
                         this.isDragging = false;
-                        this.el.querySelector('.hit-box').setAttribute('material', 'color', '#FF0000'); // 赤に戻す
+                        this.el.querySelector('.hit-box').setAttribute('material', 'color', '#FF0000'); 
                         this.el.querySelector('.hit-box').setAttribute('opacity', '0.3');
-                        log("Released");
+                        log("Touch End");
                     }
                 });
 
-                // ドラッグ移動
+                // C. タッチ移動 (Touch Move) - スマホ用
+                window.addEventListener('touchmove', (e) => {
+                    if (!this.isDragging) return;
+                    
+                    // 【重要】ブラウザのスクロールをキャンセルする
+                    if(e.cancelable) e.preventDefault();
+
+                    const touch = e.touches[0];
+                    const screenX = (touch.clientX / window.innerWidth) * 2 - 1;
+                    const screenY = -(touch.clientY / window.innerHeight) * 2 + 1;
+
+                    this.updatePosition(screenX, screenY);
+                    
+                    // デバッグ表示
+                    log("Move: " + touch.clientX.toFixed(0) + ", " + touch.clientY.toFixed(0));
+                }, { passive: false }); // passive: false が重要
+
+                // D. マウス移動 (Mouse Move) - PC用
                 window.addEventListener('mousemove', (e) => {
                     if (!this.isDragging) return;
-
-                    let clientX = e.clientX;
-                    let clientY = e.clientY;
-                    if (e.touches && e.touches.length > 0) {
-                        clientX = e.touches[0].clientX;
-                        clientY = e.touches[0].clientY;
-                    }
-
-                    let screenX = (clientX / window.innerWidth) * 2 - 1;
-                    let screenY = -(clientY / window.innerHeight) * 2 + 1;
-
-                    // 位置更新
-                    this.el.object3D.position.x = screenX * this.speed;
-                    this.el.object3D.position.y = (screenY * this.speed) + 1.6; 
+                    const screenX = (e.clientX / window.innerWidth) * 2 - 1;
+                    const screenY = -(e.clientY / window.innerHeight) * 2 + 1;
+                    this.updatePosition(screenX, screenY);
                 });
+            },
+
+            updatePosition: function(screenX, screenY) {
+                // X軸移動
+                this.el.object3D.position.x = screenX * this.speed;
+                // Y軸移動 (少し上に表示)
+                this.el.object3D.position.y = (screenY * this.speed) + 1.6;
             }
         });
 
         // --- 衝突判定 ---
         AFRAME.registerComponent('collision-check', {
             tick: function () {
-                const wrapper1 = document.querySelector('#wrapper-acorn');
-                const wrapper2 = document.querySelector('#wrapper-pain');
+                const w1 = document.querySelector('#wrapper-acorn');
+                const w2 = document.querySelector('#wrapper-pain');
                 const status = document.getElementById('status-text');
+                if (!w1 || !w2) return;
 
-                if (!wrapper1 || !wrapper2) return;
+                const dist = w1.object3D.position.distanceTo(w2.object3D.position);
 
-                const dist = wrapper1.object3D.position.distanceTo(wrapper2.object3D.position);
-
-                // 距離1.2m以内でヒット
                 if (dist < 1.2) {
-                    status.innerText = "HIT !! (Distance: " + dist.toFixed(2) + "m)";
+                    status.innerText = "HIT !!";
                     status.style.color = "red";
-                    // 中身を揺らす
-                    wrapper2.querySelector('a-entity[gltf-model]').object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
+                    w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
                 } else {
-                    status.innerText = "Touch RED BOX & Drag";
+                    status.innerText = "Drag Red Box";
                     status.style.color = "yellow";
-                    wrapper2.querySelector('a-entity[gltf-model]').object3D.rotation.z = 0;
+                    w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = 0;
                 }
             }
         });
@@ -120,7 +138,7 @@
 
     <div id="ui-layer">
         <div id="status-text">Touch RED BOX & Drag</div>
-        <div id="debug-text">Waiting for input...</div>
+        <div id="debug-text">Ready</div>
     </div>
 
     <a-scene embedded 
@@ -137,29 +155,13 @@
         <a-entity light="type: directional; intensity: 2.0; position: 1 2 1;"></a-entity>
 
         <a-entity id="wrapper-acorn" position="-1.0 1.6 -3.0" drag-wrapper>
-            
-            <a-box class="hit-box clickable" 
-                   scale="1.5 1.5 1.5" 
-                   material="color: #FF0000; opacity: 0.3; transparent: true;">
-            </a-box>
-
-            <a-entity gltf-model="url(acorn.glb)" 
-                      scale="12 12 12"
-                      position="0 -0.5 0"> </a-entity>
+            <a-box class="hit-box clickable" scale="1.5 1.5 1.5" material="color: #FF0000; opacity: 0.3; transparent: true;"></a-box>
+            <a-entity gltf-model="url(acorn.glb)" scale="12 12 12" position="0 -0.5 0"></a-entity>
         </a-entity>
 
-
         <a-entity id="wrapper-pain" position="1.0 1.6 -3.0" drag-wrapper>
-            
-            <a-box class="hit-box clickable" 
-                   scale="1.5 1.5 1.5" 
-                   material="color: #FF0000; opacity: 0.3; transparent: true;">
-            </a-box>
-
-            <a-entity gltf-model="url(pain.glb)" 
-                      scale="0.012 0.012 0.012"
-                      position="0 -0.5 0">
-            </a-entity>
+            <a-box class="hit-box clickable" scale="1.5 1.5 1.5" material="color: #FF0000; opacity: 0.3; transparent: true;"></a-box>
+            <a-entity gltf-model="url(pain.glb)" scale="0.012 0.012 0.012" position="0 -0.5 0"></a-entity>
         </a-entity>
 
     </a-scene>
