@@ -1,180 +1,210 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Drag & Drop Fixed</title>
+    <title>Fixed AR Viewer</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.0.0/dist/aframe-extras.min.js"></script>
 
     <style>
-        /* --- UI修正: ボタンを画面上部に配置 --- */
-        #ui-overlay {
+        /* --- 1. 起動画面のデカいボタン --- */
+        #start-screen {
             position: fixed;
-            top: 20px; /* 下ではなく上に配置 */
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        #start-btn {
+            padding: 20px 50px;
+            font-size: 24px;
+            background-color: #4CC3D9;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            font-weight: bold;
+            box-shadow: 0 0 15px #4CC3D9;
+        }
+        
+        /* --- 2. AR中の操作ボタン (画面上部) --- */
+        #ar-ui {
+            position: fixed;
+            top: 20px;
             left: 0;
             width: 100%;
             text-align: center;
-            z-index: 9999;
-            pointer-events: none; /* ボタン以外はタップを透過 */
-            display: none;
+            z-index: 8888;
+            display: none; /* 最初は隠す */
+            pointer-events: none; /* ボタン以外はタッチを通す */
         }
-        .btn {
-            pointer-events: auto; /* ボタンは押せるように */
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
+        .model-btn {
+            pointer-events: auto;
+            background: rgba(0,0,0,0.6);
+            color: #fff;
             border: 2px solid #fff;
-            padding: 12px 24px;
-            font-size: 14px;
-            border-radius: 30px;
-            margin: 5px;
-            cursor: pointer;
-            font-weight: bold;
+            border-radius: 20px;
+            padding: 10px 20px;
+            margin: 0 5px;
+            font-size: 16px;
         }
-        .btn.active {
-            background: #4CC3D9;
-            border-color: #4CC3D9;
+        .model-btn.active {
+            background: #FFC65D;
             color: #000;
+            border-color: #FFC65D;
         }
-        /* 状態表示ログ */
-        #debug-log {
+
+        /* デバッグログ */
+        #log {
             position: fixed;
-            bottom: 80px; /* 下部のARボタンと被らない位置 */
+            bottom: 10px;
             left: 10px;
             color: yellow;
-            font-family: monospace;
             font-size: 14px;
             z-index: 9999;
-            text-shadow: 1px 1px 2px black;
             pointer-events: none;
         }
     </style>
 
     <script>
-        let selectedModelId = 'model-acorn';
+        // モデル切り替え用変数
+        let currentModel = 'acorn'; 
 
-        // ログ表示用関数
-        function log(text) {
-            const el = document.getElementById('debug-log');
-            if(el) el.innerHTML = text;
-            console.log(text);
+        // ログ表示
+        function log(msg) {
+            document.getElementById('log').innerText = msg;
         }
 
-        AFRAME.registerComponent('ar-logic', {
-            init: function () {
+        // ARを開始する関数
+        function startAR() {
+            const scene = document.querySelector('a-scene');
+            // A-Frameの機能でARモードに入る
+            scene.enterVR(); 
+        }
+
+        // モデル切り替えボタン
+        function switchModel(name) {
+            currentModel = name;
+            
+            // ボタンの色を変える
+            document.querySelectorAll('.model-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-' + name).classList.add('active');
+
+            // 表示切り替え
+            const acorn = document.getElementById('obj-acorn');
+            const pain = document.getElementById('obj-pain');
+
+            if (name === 'acorn') {
+                acorn.setAttribute('visible', 'true');
+                pain.setAttribute('visible', 'false');
+                
+                // 位置をリセット（目の前に持ってくる）
+                resetPosition(acorn);
+            } else {
+                acorn.setAttribute('visible', 'false');
+                pain.setAttribute('visible', 'true');
+                
+                resetPosition(pain);
+            }
+            log("Switched to: " + name);
+        }
+
+        // オブジェクトをカメラの目の前に強制移動する関数
+        function resetPosition(element) {
+            const camera = document.querySelector('[camera]');
+            const pos = new THREE.Vector3();
+            const dir = new THREE.Vector3();
+            
+            camera.object3D.getWorldPosition(pos);
+            camera.object3D.getWorldDirection(dir);
+            
+            // 目の前 0.5m の位置
+            dir.multiplyScalar(-0.5);
+            pos.add(dir);
+            
+            // 高さを少し下げる
+            pos.y -= 0.2;
+
+            element.object3D.position.copy(pos);
+        }
+
+        // A-Frameコンポーネント
+        AFRAME.registerComponent('app-manager', {
+            init: function() {
                 const scene = this.el.sceneEl;
-                this.reticle = document.querySelector('#reticle');
-                
-                // ARモードに入ったらUIを表示
+
+                // ARモードに入った瞬間
                 scene.addEventListener('enter-vr', () => {
-                    document.getElementById('ui-overlay').style.display = 'block';
-                    log("AR Started. Move camera slowly.");
-                });
-                
-                scene.addEventListener('exit-vr', () => {
-                    document.getElementById('ui-overlay').style.display = 'none';
-                    log("AR Stopped.");
+                    document.getElementById('start-screen').style.display = 'none';
+                    document.getElementById('ar-ui').style.display = 'block';
+                    
+                    // 最初はドングリを表示して目の前に置く
+                    setTimeout(() => {
+                        switchModel('acorn');
+                        log("AR Active. Look around.");
+                    }, 1000);
                 });
 
-                // 画面タップ時の処理
-                this.el.sceneEl.addEventListener('click', () => {
-                    this.placeModel();
+                // ARから抜けた瞬間
+                scene.addEventListener('exit-vr', () => {
+                    document.getElementById('start-screen').style.display = 'flex';
+                    document.getElementById('ar-ui').style.display = 'none';
+                    location.reload(); // バグ防止のためリロード
                 });
             },
-
-            placeModel: function() {
-                const targetModel = document.querySelector('#' + selectedModelId);
-                if (!targetModel) return;
-
-                // A. レティクル（リング）が見えている場合 -> そこに配置
-                if (this.reticle && this.reticle.getAttribute('visible')) {
-                    targetModel.object3D.position.copy(this.reticle.object3D.position);
-                    targetModel.setAttribute('visible', 'true');
-                    log("Placed " + selectedModelId + " on floor.");
-                } 
-                // B. レティクルが見えない場合 -> カメラの目の前に配置 (強制配置)
-                else {
-                    const camera = document.querySelector('[camera]');
-                    // カメラの位置と回転を取得
-                    const position = new THREE.Vector3();
-                    const direction = new THREE.Vector3();
-                    camera.object3D.getWorldPosition(position);
-                    camera.object3D.getWorldDirection(direction);
-                    
-                    // 目の前 1メートル (-direction) の位置を計算
-                    // ※getWorldDirectionはZマイナス方向を向くため、単純に加算
-                    direction.multiplyScalar(-1.0); 
-                    position.add(direction);
-
-                    // 高さはカメラより少し下にする(適当な補正)
-                    position.y -= 0.5;
-
-                    targetModel.object3D.position.copy(position);
-                    targetModel.setAttribute('visible', 'true');
-                    log("Force placed " + selectedModelId + " in air.");
-                }
+            
+            tick: function() {
+                // 距離判定ロジック
+                const acorn = document.getElementById('obj-acorn');
+                const pain = document.getElementById('obj-pain');
+                
+                // 両方表示されているときだけ計算（今回は切り替え式にしたので、もし両方出すならここを修正）
+                // 今回は「切り替え式」にしたため、距離判定は一旦「ログ出し」のみにします
             }
         });
-
-        // 距離判定ロジック
-        AFRAME.registerComponent('distance-check', {
-            tick: function () {
-                const acorn = document.querySelector('#model-acorn');
-                const pain = document.querySelector('#model-pain');
-
-                if (acorn.getAttribute('visible') && pain.getAttribute('visible')) {
-                    const dist = acorn.object3D.position.distanceTo(pain.object3D.position);
-                    if (dist < 0.5) { // 50cm
-                        log("HIT!! Distance: " + dist.toFixed(2) + "m");
-                        pain.object3D.rotation.y += 0.1; // 回転演出
-                    } else {
-                        log("Distance: " + dist.toFixed(2) + "m");
-                    }
-                }
-            }
-        });
-
-        function selectModel(id) {
-            selectedModelId = id;
-            document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
-            if(id === 'model-acorn') document.getElementById('btn-acorn').classList.add('active');
-            else document.getElementById('btn-pain').classList.add('active');
-            log("Selected: " + id + ". Tap screen to place.");
-        }
     </script>
 </head>
 
-<body>
-    <div id="debug-log">Waiting for AR...</div>
+<body style="margin: 0; overflow: hidden;">
 
-    <div id="ui-overlay">
-        <button id="btn-acorn" class="btn active" onclick="selectModel('model-acorn')">Acorn (ドングリ)</button>
-        <button id="btn-pain" class="btn" onclick="selectModel('model-pain')">Pineapple (パイン)</button>
-        <br>
-        <span style="font-size:12px; color:white; background:rgba(0,0,0,0.5);">Tap screen to place model</span>
+    <div id="start-screen">
+        <button id="start-btn" onclick="startAR()">START AR</button>
+        <p style="color:white; margin-top:10px;">Make sure you use HTTPS</p>
     </div>
 
+    <div id="ar-ui">
+        <button id="btn-acorn" class="model-btn active" onclick="switchModel('acorn')">Acorn</button>
+        <button id="btn-pain" class="model-btn" onclick="switchModel('pain')">Pineapple</button>
+    </div>
+
+    <div id="log">Ready.</div>
+
     <a-scene embedded 
-             webxr="requiredFeatures: hit-test, local-floor; optionalFeatures: dom-overlay; overlayElement: #ui-overlay"
-             ar-logic
-             distance-check>
+             vr-mode-ui="enabled: false"
+             webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: #ar-ui"
+             app-manager>
 
-        <a-entity id="model-acorn" gltf-model="url(acorn.glb)" scale="5 5 5" visible="false"></a-entity>
+        <a-entity camera position="0 1.6 0" look-controls="pointerLockEnabled: false"></a-entity>
 
-        <a-entity id="model-pain" gltf-model="url(pain.glb)" scale="0.005 0.005 0.005" visible="false"></a-entity>
+        <a-entity light="type: ambient; intensity: 2;"></a-entity>
+        <a-entity light="type: directional; intensity: 1;" position="1 1 1"></a-entity>
 
-        <a-entity id="reticle"
-                  ar-hit-test-target
-                  geometry="primitive: ring; radiusInner: 0.1; radiusOuter: 0.15"
-                  material="color: cyan; shader: flat"
-                  rotation="-90 0 0"
+        <a-entity id="obj-acorn" 
+                  gltf-model="url(acorn.glb)" 
+                  scale="5 5 5" 
+                  position="0 0 -1" 
                   visible="false">
         </a-entity>
 
-        <a-entity light="type: ambient; intensity: 1.5;"></a-entity>
-        <a-entity light="type: directional; intensity: 1;" position="-1 1 0"></a-entity>
-        
-        <a-entity camera position="0 1.6 0"></a-entity>
+        <a-entity id="obj-pain" 
+                  gltf-model="url(pain.glb)" 
+                  scale="0.005 0.005 0.005" 
+                  position="0 0 -1" 
+                  visible="false">
+        </a-entity>
 
     </a-scene>
 </body>
