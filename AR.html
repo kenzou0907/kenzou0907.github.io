@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Universal AR Viewer</title>
+    <title>Universal AR Viewer - Lighting Fixed</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -29,7 +29,6 @@
             color: white;
             border: none;
             border-radius: 50px;
-            font-weight: bold;
             box-shadow: 0 0 20px rgba(76, 195, 217, 0.5);
             cursor: pointer;
         }
@@ -78,9 +77,7 @@
             document.getElementById('log').innerText = text;
         }
 
-        // AR開始ボタンの処理
         function startAR() {
-            // スタート画面をフェードアウトして消す
             const screen = document.getElementById('start-screen');
             screen.style.opacity = '0';
             setTimeout(() => {
@@ -88,18 +85,14 @@
                 document.getElementById('ar-ui').style.display = 'block';
             }, 500);
 
-            // 初期モデルを表示
-            switchModel('acorn');
+            switchModel('acorn'); // 最初のモデルを表示
             log("Camera Active. Objects are in front of you.");
         }
 
-        // モデル切り替え
         function switchModel(name) {
-            // ボタンの見た目更新
             document.querySelectorAll('.model-btn').forEach(b => b.classList.remove('active'));
             document.getElementById('btn-' + name).classList.add('active');
 
-            // 表示切り替え
             const acorn = document.getElementById('obj-acorn');
             const pain = document.getElementById('obj-pain');
 
@@ -112,12 +105,9 @@
             }
         }
 
-        // A-Frameロード完了時の処理
         AFRAME.registerComponent('init-scene', {
             init: function() {
                 log("Ready. Tap START AR.");
-                
-                // カメラ映像がロードされたらサイズ調整（スマホでの表示崩れ防止）
                 window.addEventListener('resize', () => {
                     this.el.sceneEl.resize();
                 });
@@ -148,10 +138,10 @@
 
         <a-entity camera look-controls position="0 1.6 0"></a-entity>
 
-        <a-entity light="type: ambient; intensity: 1.5;"></a-entity>
-        <a-entity light="type: directional; intensity: 1;" position="1 1 0"></a-entity>
-
-        <a-entity id="obj-acorn" 
+        <a-entity light="type: ambient; intensity: 1.8; color: #FFF;"></a-entity> 
+        <a-entity light="type: directional; intensity: 0.8; color: #FFF; position: -1 2 1;"></a-entity>
+        <a-entity light="type: directional; intensity: 0.6; color: #FFF; position: 1 2 -1;"></a-entity>
+        <a-entity light="type: directional; intensity: 0.4; color: #FFF; position: 0 -1 0;"></a-entity> <a-entity id="obj-acorn" 
                   gltf-model="url(acorn.glb)" 
                   scale="5 5 5" 
                   position="0 0 -2" 
