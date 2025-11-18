@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Fixed Final</title>
+    <title>AR Final Adjustment</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
@@ -23,16 +23,29 @@
             box-shadow: 0 0 20px #FFC65D; cursor: pointer;
         }
 
-        /* UI表示 */
-        #status-ui {
-            position: fixed; top: 0; left: 0; width: 100%;
-            padding: 20px; text-align: center; z-index: 8888;
-            pointer-events: none; display: none;
+        /* UIエリア */
+        #ui-layer {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; /* UI以外のタッチはARへ通す */
+            display: none; z-index: 8888;
         }
+
+        /* ステータス文字 */
         #status-text {
-            color: white; font-size: 22px; font-weight: bold;
+            position: absolute; top: 20px; left: 0; width: 100%;
+            text-align: center; color: white; font-size: 22px; font-weight: bold;
             text-shadow: 2px 2px 4px #000;
-            background: rgba(0,0,0,0.6); padding: 8px 20px; border-radius: 15px;
+        }
+
+        /* リセットボタン (見失った時用) */
+        #reset-btn {
+            position: absolute; bottom: 30px; left: 50%;
+            transform: translateX(-50%);
+            pointer-events: auto; /* ボタンは押せるように */
+            background: rgba(255, 255, 255, 0.3);
+            border: 1px solid white; color: white;
+            padding: 10px 30px; border-radius: 30px;
+            font-size: 14px; cursor: pointer;
         }
     </style>
 
@@ -41,11 +54,11 @@
         AFRAME.registerComponent('drag-move', {
             init: function () {
                 this.isDragging = false;
-                this.data.speed = 2.5; // 移動速度を少し上げました
+                this.data.speed = 3.0; // 移動速度
 
                 this.el.addEventListener('mousedown', () => {
                     this.isDragging = true;
-                    this.el.setAttribute('opacity', '0.7'); // 掴んだら半透明
+                    this.el.setAttribute('opacity', '0.7');
                 });
 
                 window.addEventListener('mouseup', () => {
@@ -63,11 +76,10 @@
                         clientY = e.touches[0].clientY;
                     }
 
-                    // 画面座標を正規化
                     let screenX = (clientX / window.innerWidth) * 2 - 1;
                     let screenY = -(clientY / window.innerHeight) * 2 + 1;
 
-                    // 位置更新 (Y軸調整で指の上に表示)
+                    // カメラ位置基準で動かす
                     this.el.object3D.position.x = screenX * this.data.speed;
                     this.el.object3D.position.y = (screenY * this.data.speed) + 1.6; 
                 });
@@ -84,8 +96,8 @@
 
                 const dist = acorn.object3D.position.distanceTo(pain.object3D.position);
 
-                // サイズを大きくしたので判定距離も1.0mに拡大
-                if (dist < 1.0) {
+                // 距離1.2m以内でヒット
+                if (dist < 1.2) {
                     status.innerText = "HIT !!";
                     status.style.color = "#FF3333";
                     pain.object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
@@ -97,13 +109,26 @@
             }
         });
 
+        // AR開始
         function startAR() {
             const screen = document.getElementById('start-screen');
             screen.style.opacity = '0';
             setTimeout(() => {
                 screen.style.display = 'none';
-                document.getElementById('status-ui').style.display = 'block';
+                document.getElementById('ui-layer').style.display = 'block';
             }, 500);
+        }
+
+        // 位置リセット（見えなくなった時用）
+        function resetPositions() {
+            const acorn = document.querySelector('#obj-acorn');
+            const pain = document.querySelector('#obj-pain');
+            
+            // 初期位置に戻す
+            acorn.object3D.position.set(-1.0, 1.6, -4);
+            pain.object3D.position.set(1.0, 1.6, -4);
+            
+            alert("Positions Reset!");
         }
     </script>
 </head>
@@ -113,7 +138,11 @@
     <div id="start-screen">
         <button id="start-btn" onclick="startAR()">START AR</button>
     </div>
-    <div id="status-ui"><span id="status-text">Loading...</span></div>
+
+    <div id="ui-layer">
+        <div id="status-text">Loading...</div>
+        <button id="reset-btn" onclick="resetPositions()">Reset Positions</button>
+    </div>
 
     <a-scene embedded 
              arjs="sourceType: webcam; debugUIEnabled: false;"
@@ -131,16 +160,16 @@
 
         <a-entity id="obj-acorn" 
                   gltf-model="url(acorn.glb)" 
-                  scale="30 30 30" 
-                  position="-0.8 1.6 -3"
+                  scale="12 12 12" 
+                  position="-1.0 1.6 -4"
                   class="clickable"
                   drag-move>
         </a-entity>
 
         <a-entity id="obj-pain" 
                   gltf-model="url(pain.glb)" 
-                  scale="0.03 0.03 0.03" 
-                  position="0.8 1.6 -3" 
+                  scale="0.012 0.012 0.012" 
+                  position="1.0 1.6 -4" 
                   rotation="0 0 0"
                   class="clickable"
                   drag-move>
