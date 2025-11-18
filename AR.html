@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Fixed Interaction</title>
+    <title>AR Drag Fixed</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
@@ -9,10 +9,10 @@
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 
     <style>
-        /* UIデザイン */
+        /* 起動画面 */
         #start-screen {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.95); z-index: 9999;
+            background: rgba(0,0,0,0.9); z-index: 9999;
             display: flex; flex-direction: column;
             justify-content: center; align-items: center;
             transition: opacity 0.5s;
@@ -44,56 +44,59 @@
     </style>
 
     <script>
-        // --- 1. ドラッグ操作コンポーネント ---
+        // --- 1. スマホ対応ドラッグ操作 (タッチイベント対応版) ---
         AFRAME.registerComponent('drag-move', {
             init: function () {
                 this.isDragging = false;
-                this.camera = document.querySelector('[camera]');
                 
-                // タッチ開始 (このオブジェクトだけ)
-                this.el.addEventListener('mousedown', (e) => {
+                // 移動速度 (画面幅に対する感度)
+                this.speed = 5.0; 
+
+                // --- A. タッチ開始 (Touch Start) ---
+                this.el.addEventListener('touchstart', (e) => {
                     this.isDragging = true;
-                    this.el.setAttribute('opacity', '0.7');
-                    
-                    // 重要: タッチイベントがカメラに伝わらないように止める
-                    if(e.detail && e.detail.originalEvent) {
-                        e.detail.originalEvent.stopPropagation();
-                    }
+                    this.el.setAttribute('opacity', '0.7'); // 半透明にして反応を示す
+                    // カメラへのイベント伝播を止める（念のため）
+                    if(e.preventDefault) e.preventDefault(); 
                 });
 
-                // タッチ終了 (画面全体)
-                window.addEventListener('mouseup', () => {
-                    if(this.isDragging) {
-                        this.isDragging = false;
-                        this.el.setAttribute('opacity', '1.0');
-                    }
+                // --- B. タッチ終了 (Touch End) ---
+                window.addEventListener('touchend', () => {
+                    this.isDragging = false;
+                    this.el.setAttribute('opacity', '1.0');
                 });
 
-                // ドラッグ移動処理
-                window.addEventListener('mousemove', (e) => {
+                // --- C. タッチ移動 (Touch Move) ---
+                window.addEventListener('touchmove', (e) => {
                     if (!this.isDragging) return;
 
-                    // マウス/タッチ座標の取得
-                    let clientX = e.clientX;
-                    let clientY = e.clientY;
-                    if (e.touches && e.touches.length > 0) {
-                        clientX = e.touches[0].clientX;
-                        clientY = e.touches[0].clientY;
-                    }
+                    // 最初の指の位置を取得
+                    const touch = e.touches[0];
+                    const clientX = touch.clientX;
+                    const clientY = touch.clientY;
 
                     // 画面座標 (-1 〜 1) に変換
                     let screenX = (clientX / window.innerWidth) * 2 - 1;
                     let screenY = -(clientY / window.innerHeight) * 2 + 1;
 
-                    // 移動速度係数
-                    const speed = 4.0; 
-
-                    // 位置更新 (カメラの回転を無視して、単純にX/Y座標を書き換える)
-                    // ※これで「カメラが回る」現象と切り離します
-                    this.el.object3D.position.x = screenX * speed;
-                    this.el.object3D.position.y = (screenY * speed) + 1.6; // 高さは目の前に合わせる
+                    // 位置更新
+                    // X軸: 横移動
+                    this.el.object3D.position.x = screenX * this.speed;
+                    // Y軸: 縦移動（指の少し上に表示されるよう +1.6 などの補正を入れる）
+                    this.el.object3D.position.y = (screenY * this.speed) + 1.6; 
                 });
-            }
+                
+                // --- (PCのマウス操作用も一応残しておく) ---
+                this.el.addEventListener('mousedown', () => { this.isDragging = true; this.el.setAttribute('opacity', '0.7'); });
+                window.addEventListener('mouseup', () => { this.isDragging = false; this.el.setAttribute('opacity', '1.0'); });
+                window.addEventListener('mousemove', (e) => {
+                    if (!this.isDragging) return;
+                    let screenX = (e.clientX / window.innerWidth) * 2 - 1;
+                    let screenY = -(e.clientY / window.innerHeight) * 2 + 1;
+                    this.el.object3D.position.x = screenX * this.speed;
+                    this.el.object3D.position.y = (screenY * this.speed) + 1.6;
+                });
+            },
         });
 
         // --- 2. 衝突判定コンポーネント ---
@@ -107,31 +110,15 @@
 
                 const dist = acorn.object3D.position.distanceTo(pain.object3D.position);
 
-                // 距離1.5m以内でヒット (大きめにとる)
+                // 距離1.5m以内でヒット
                 if (dist < 1.5) {
                     status.innerText = "HIT !!";
                     status.style.color = "#FF4444";
-                    // 衝突アクション
                     pain.object3D.rotation.z = Math.sin(Date.now() / 50) * 0.2;
                 } else {
-                    status.innerText = "Drag to Hit";
+                    status.innerText = "Touch & Drag";
                     status.style.color = "white";
                     pain.object3D.rotation.z = 0;
-                }
-            }
-        });
-
-        // --- 3. カメラ回転の強制無効化 ---
-        AFRAME.registerComponent('disable-camera-touch', {
-            init: function() {
-                // look-controlsコンポーネントの設定を強制的に上書き
-                const controls = this.el.components['look-controls'];
-                if(controls) {
-                    controls.data.touchEnabled = false;
-                    controls.data.mouseEnabled = false;
-                    // 念のためイベントリスナーも削除（強引な手法）
-                    this.el.sceneEl.canvas.removeEventListener('mousedown', controls.onMouseDown);
-                    this.el.sceneEl.canvas.removeEventListener('touchstart', controls.onTouchStart);
                 }
             }
         });
@@ -148,8 +135,8 @@
             const acorn = document.querySelector('#obj-acorn');
             const pain = document.querySelector('#obj-pain');
             // 初期位置リセット
-            acorn.object3D.position.set(-1.2, 1.6, -4.5);
-            pain.object3D.position.set(1.2, 1.6, -4.5);
+            acorn.object3D.position.set(-1.5, 1.6, -4.5);
+            pain.object3D.position.set(1.5, 1.6, -4.5);
         }
     </script>
 </head>
@@ -172,8 +159,7 @@
              collision-check>
 
         <a-entity camera 
-                  look-controls="touchEnabled: false; mouseEnabled: false;" 
-                  disable-camera-touch
+                  look-controls="touchEnabled: false" 
                   position="0 1.6 0">
              <a-cursor fuse="false" rayOrigin="mouse" visible="false"></a-cursor>
         </a-entity>
@@ -184,7 +170,7 @@
         <a-entity id="obj-acorn" 
                   gltf-model="url(acorn.glb)" 
                   scale="12 12 12" 
-                  position="-1.2 1.6 -4.5"
+                  position="-1.5 1.6 -4.5"
                   class="clickable"
                   drag-move>
         </a-entity>
@@ -192,7 +178,7 @@
         <a-entity id="obj-pain" 
                   gltf-model="url(pain.glb)" 
                   scale="0.012 0.012 0.012" 
-                  position="1.2 1.6 -4.5" 
+                  position="1.5 1.6 -4.5" 
                   rotation="0 0 0"
                   class="clickable"
                   drag-move>
