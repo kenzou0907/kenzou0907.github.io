@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Final Fixed</title>
+    <title>AR Fixed Final</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
@@ -23,91 +23,74 @@
             box-shadow: 0 0 20px #FFC65D; cursor: pointer;
         }
 
-        /* ヒント表示 */
+        /* UI表示 */
         #status-ui {
             position: fixed; top: 0; left: 0; width: 100%;
-            padding: 20px;
-            text-align: center;
-            z-index: 8888;
-            pointer-events: none;
-            display: none;
+            padding: 20px; text-align: center; z-index: 8888;
+            pointer-events: none; display: none;
         }
         #status-text {
-            color: white; font-size: 24px; font-weight: bold;
+            color: white; font-size: 22px; font-weight: bold;
             text-shadow: 2px 2px 4px #000;
-            background: rgba(0,0,0,0.5);
-            padding: 10px 20px;
-            border-radius: 20px;
+            background: rgba(0,0,0,0.6); padding: 8px 20px; border-radius: 15px;
         }
     </style>
 
     <script>
-        // --- ドラッグ操作 (個別操作の修正版) ---
+        // --- ドラッグ操作 ---
         AFRAME.registerComponent('drag-move', {
             init: function () {
                 this.isDragging = false;
-                this.data.speed = 2.0; // 移動スピード調整
+                this.data.speed = 2.5; // 移動速度を少し上げました
 
-                // タッチ開始
-                this.el.addEventListener('mousedown', (e) => {
+                this.el.addEventListener('mousedown', () => {
                     this.isDragging = true;
-                    // 掴んでいることがわかるように少し透明にする
-                    this.el.setAttribute('opacity', '0.5');
+                    this.el.setAttribute('opacity', '0.7'); // 掴んだら半透明
                 });
 
-                // タッチ終了
                 window.addEventListener('mouseup', () => {
-                    if (this.isDragging) {
-                        this.isDragging = false;
-                        this.el.setAttribute('opacity', '1.0');
-                    }
+                    this.isDragging = false;
+                    this.el.setAttribute('opacity', '1.0');
                 });
 
-                // ドラッグ中の移動処理
                 window.addEventListener('mousemove', (e) => {
                     if (!this.isDragging) return;
 
                     let clientX = e.clientX;
                     let clientY = e.clientY;
-                    
-                    // スマホタッチ対応
                     if (e.touches && e.touches.length > 0) {
                         clientX = e.touches[0].clientX;
                         clientY = e.touches[0].clientY;
                     }
 
-                    // 画面座標(-1〜1)に変換
+                    // 画面座標を正規化
                     let screenX = (clientX / window.innerWidth) * 2 - 1;
                     let screenY = -(clientY / window.innerHeight) * 2 + 1;
 
-                    // オブジェクトの座標を更新
-                    // ※Y座標を調整して「指の少し上」に来るようにすると見やすい
+                    // 位置更新 (Y軸調整で指の上に表示)
                     this.el.object3D.position.x = screenX * this.data.speed;
-                    this.el.object3D.position.y = (screenY * this.data.speed) + 1.5; 
+                    this.el.object3D.position.y = (screenY * this.data.speed) + 1.6; 
                 });
             }
         });
 
-        // --- 衝突判定 (HIT!!) ---
+        // --- 衝突判定 ---
         AFRAME.registerComponent('collision-check', {
             tick: function () {
                 const acorn = document.querySelector('#obj-acorn');
                 const pain = document.querySelector('#obj-pain');
                 const status = document.getElementById('status-text');
-
                 if (!acorn || !pain) return;
 
-                // 距離計算
                 const dist = acorn.object3D.position.distanceTo(pain.object3D.position);
 
-                // 判定距離 (モデルを大きくしたので判定範囲も広げる: 0.8m)
-                if (dist < 0.8) {
+                // サイズを大きくしたので判定距離も1.0mに拡大
+                if (dist < 1.0) {
                     status.innerText = "HIT !!";
-                    status.style.color = "#FF3333"; // 赤色
-                    // 衝突アクション: パイナップルを揺らす
+                    status.style.color = "#FF3333";
                     pain.object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
                 } else {
-                    status.innerText = "Drag to Hit";
+                    status.innerText = "Touch & Drag";
                     status.style.color = "white";
                     pain.object3D.rotation.z = 0;
                 }
@@ -129,12 +112,8 @@
 
     <div id="start-screen">
         <button id="start-btn" onclick="startAR()">START AR</button>
-        <p style="color:#ddd; margin-top:20px;">Fix: Colors & Dragging</p>
     </div>
-
-    <div id="status-ui">
-        <span id="status-text">Touch & Drag Models</span>
-    </div>
+    <div id="status-ui"><span id="status-text">Loading...</span></div>
 
     <a-scene embedded 
              arjs="sourceType: webcam; debugUIEnabled: false;"
@@ -142,28 +121,26 @@
              vr-mode-ui="enabled: false"
              collision-check>
 
-        <a-entity camera position="0 1.6 0">
+        <a-entity camera look-controls="touchEnabled: false" position="0 1.6 0">
             <a-cursor fuse="false" rayOrigin="mouse" visible="false"></a-cursor>
         </a-entity>
 
-
-        <a-entity light="type: ambient; intensity: 2.5; color: #FFFFFF;"></a-entity>
-        <a-entity light="type: directional; intensity: 1.5; position: 1 4 2; color: #FFFFFF;"></a-entity>
-        <a-entity light="type: directional; intensity: 0.8; position: -1 -2 -1; color: #FFEEEE;"></a-entity>
-
+        <a-entity light="type: ambient; intensity: 3.0; color: #ffffff"></a-entity>
+        <a-entity light="type: directional; intensity: 2.0; position: 1 1 1"></a-entity>
+        <a-entity light="type: directional; intensity: 2.0; position: -1 1 1"></a-entity>
 
         <a-entity id="obj-acorn" 
                   gltf-model="url(acorn.glb)" 
-                  scale="15 15 15" 
-                  position="-0.8 1.6 -2.5"
+                  scale="30 30 30" 
+                  position="-0.8 1.6 -3"
                   class="clickable"
                   drag-move>
         </a-entity>
 
         <a-entity id="obj-pain" 
                   gltf-model="url(pain.glb)" 
-                  scale="0.015 0.015 0.015" 
-                  position="0.8 1.6 -2.5" 
+                  scale="0.03 0.03 0.03" 
+                  position="0.8 1.6 -3" 
                   rotation="0 0 0"
                   class="clickable"
                   drag-move>
