@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>acorn AR Viewer</title>
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        model-viewer {
+            width: 100%;
+            height: 100%;
+        }
+        #ar-button {
+            position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%);
+            border-radius: 10px; border: none; background-color: #007aff; color: white;
+            padding: 12px 24px; font-size: 18px; font-weight: bold; cursor: pointer;
+        }
+        #screenshot-button {
+            position: absolute; top: 16px; left: 16px; border-radius: 10px; border: none;
+            background-color: rgba(255, 255, 255, 0.8); color: black;
+            padding: 10px 16px; font-size: 16px; cursor: pointer;
+        }
+        #qr-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 16px;
+            text-align: center;
+            font-family: sans-serif;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        #qrcode {
+            padding: 10px;
+        }
+        @media (max-width: 768px) {
+            #qr-overlay {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <model-viewer
+        id="viewer"
+        src="acorn.glb"
+        ios-src="acorn.usdz"
+        ar
+        ar-modes="webxr scene-viewer quick-look"
+        camera-controls
+        auto-rotate
+        shadow-intensity="1"
+        alt="A 3D model of a acorn"
+        scale="0.1 0.1 0.1">
+        
+        <button slot="ar-button" id="ar-button">
+            ARで表示する
+        </button>
+    </model-viewer>
+
+    <button id="screenshot-button">📸 写真をとる</button>
+
+    <div id="qr-overlay">
+        <h3>スマートフォンでARを体験</h3>
+        <p>以下のQRコードを読み取ってください</p>
+        <div id="qrcode"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const modelViewer = document.querySelector('#viewer');
+            const screenshotButton = document.querySelector('#screenshot-button');
+
+            screenshotButton.addEventListener('click', () => {
+                const dataURL = modelViewer.toDataURL();
+                const link = document.createElement('a');
+                link.href = dataURL;
+                link.download = 'acorn-ar-photo.png';
+                link.click();
+            });
+
+            const qrCodeElement = document.getElementById("qrcode");
+            if (qrCodeElement) {
+                const currentPageUrl = window.location.href;
+                new QRCode(qrCodeElement, {
+                    text: currentPageUrl,
+                    width: 128,
+                    height: 128,
+                });
+            }
+        });
+    </script>
+
+</body>
+</html>
