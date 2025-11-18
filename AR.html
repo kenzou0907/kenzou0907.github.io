@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Interaction Final</title>
+    <title>AR Final Fixed</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
@@ -9,7 +9,7 @@
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 
     <style>
-        /* 起動ボタン */
+        /* 起動画面 */
         #start-screen {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 9999;
@@ -19,82 +19,76 @@
         }
         #start-btn {
             padding: 15px 50px; font-size: 24px; font-weight: bold;
-            background: #4CC3D9; color: #fff; border-radius: 50px; border: none;
-            box-shadow: 0 0 20px #4CC3D9; cursor: pointer;
+            background: #FFC65D; color: #000; border-radius: 50px; border: none;
+            box-shadow: 0 0 20px #FFC65D; cursor: pointer;
         }
 
-        /* 画面上部のステータス表示 */
+        /* ヒント表示 */
         #status-ui {
             position: fixed; top: 0; left: 0; width: 100%;
-            padding: 15px 0;
+            padding: 20px;
             text-align: center;
             z-index: 8888;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
-            pointer-events: none; /* タッチを透過 */
+            pointer-events: none;
             display: none;
         }
         #status-text {
-            color: white; font-size: 20px; font-weight: bold;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
-        }
-        
-        /* ヒント */
-        #hint {
-            position: fixed; bottom: 20px; width: 100%; text-align: center;
-            color: #ddd; font-size: 14px; pointer-events: none;
-            display: none; text-shadow: 1px 1px 2px black;
+            color: white; font-size: 24px; font-weight: bold;
+            text-shadow: 2px 2px 4px #000;
+            background: rgba(0,0,0,0.5);
+            padding: 10px 20px;
+            border-radius: 20px;
         }
     </style>
 
     <script>
-        // --- ドラッグ操作のロジック ---
+        // --- ドラッグ操作 (個別操作の修正版) ---
         AFRAME.registerComponent('drag-move', {
             init: function () {
                 this.isDragging = false;
-                this.data.speed = 1.5; // 移動感度
+                this.data.speed = 2.0; // 移動スピード調整
 
                 // タッチ開始
                 this.el.addEventListener('mousedown', (e) => {
                     this.isDragging = true;
-                    // 操作中の視覚フィードバック（少し薄くする）
-                    this.el.setAttribute('opacity', '0.7');
+                    // 掴んでいることがわかるように少し透明にする
+                    this.el.setAttribute('opacity', '0.5');
                 });
 
                 // タッチ終了
                 window.addEventListener('mouseup', () => {
-                    if(this.isDragging) {
+                    if (this.isDragging) {
                         this.isDragging = false;
                         this.el.setAttribute('opacity', '1.0');
                     }
                 });
 
-                // ドラッグ中 (画面上のタッチ位置に合わせてX, Yを動かす)
+                // ドラッグ中の移動処理
                 window.addEventListener('mousemove', (e) => {
                     if (!this.isDragging) return;
 
-                    // マウス/タッチ座標の取得
                     let clientX = e.clientX;
                     let clientY = e.clientY;
                     
-                    // スマホのタッチイベント対応
+                    // スマホタッチ対応
                     if (e.touches && e.touches.length > 0) {
                         clientX = e.touches[0].clientX;
                         clientY = e.touches[0].clientY;
                     }
 
-                    // 画面中央を(0,0)とした正規化座標 (-1 ~ 1)
+                    // 画面座標(-1〜1)に変換
                     let screenX = (clientX / window.innerWidth) * 2 - 1;
                     let screenY = -(clientY / window.innerHeight) * 2 + 1;
 
-                    // オブジェクトの位置更新 (感度調整)
-                    // Z軸は固定(-2)のまま、XとYだけ動かす
+                    // オブジェクトの座標を更新
+                    // ※Y座標を調整して「指の少し上」に来るようにすると見やすい
                     this.el.object3D.position.x = screenX * this.data.speed;
-                    this.el.object3D.position.y = screenY * this.data.speed + 1.6; // カメラ高さ補正
+                    this.el.object3D.position.y = (screenY * this.data.speed) + 1.5; 
                 });
             }
         });
 
-        // --- 衝突判定ロジック ---
+        // --- 衝突判定 (HIT!!) ---
         AFRAME.registerComponent('collision-check', {
             tick: function () {
                 const acorn = document.querySelector('#obj-acorn');
@@ -103,22 +97,18 @@
 
                 if (!acorn || !pain) return;
 
-                // 2つの距離を計算
+                // 距離計算
                 const dist = acorn.object3D.position.distanceTo(pain.object3D.position);
 
-                // 距離が近い (0.6m以内) なら衝突
-                if (dist < 0.6) {
+                // 判定距離 (モデルを大きくしたので判定範囲も広げる: 0.8m)
+                if (dist < 0.8) {
                     status.innerText = "HIT !!";
-                    status.style.color = "#FF3333";
-                    status.style.fontSize = "30px";
-                    
-                    // 衝突演出: パイナップルを揺らす
-                    pain.object3D.rotation.z = Math.sin(Date.now() / 100) * 0.2;
+                    status.style.color = "#FF3333"; // 赤色
+                    // 衝突アクション: パイナップルを揺らす
+                    pain.object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
                 } else {
-                    status.innerText = "Drag models to collide";
+                    status.innerText = "Drag to Hit";
                     status.style.color = "white";
-                    status.style.fontSize = "20px";
-                    // 回転リセット
                     pain.object3D.rotation.z = 0;
                 }
             }
@@ -130,7 +120,6 @@
             setTimeout(() => {
                 screen.style.display = 'none';
                 document.getElementById('status-ui').style.display = 'block';
-                document.getElementById('hint').style.display = 'block';
             }, 500);
         }
     </script>
@@ -140,40 +129,42 @@
 
     <div id="start-screen">
         <button id="start-btn" onclick="startAR()">START AR</button>
-        <p style="color:white; margin-top:20px;">Allow Camera Access</p>
+        <p style="color:#ddd; margin-top:20px;">Fix: Colors & Dragging</p>
     </div>
 
     <div id="status-ui">
-        <div id="status-text">Ready</div>
+        <span id="status-text">Touch & Drag Models</span>
     </div>
-    <div id="hint">Touch & Drag models</div>
 
     <a-scene embedded 
              arjs="sourceType: webcam; debugUIEnabled: false;"
+             renderer="logarithmicDepthBuffer: true; colorManagement: true;"
              vr-mode-ui="enabled: false"
-             renderer="logarithmicDepthBuffer: true;"
              collision-check>
 
-        <a-entity camera look-controls position="0 1.6 0">
+        <a-entity camera position="0 1.6 0">
             <a-cursor fuse="false" rayOrigin="mouse" visible="false"></a-cursor>
         </a-entity>
 
-        <a-entity light="type: ambient; intensity: 1.8; color: #FFF;"></a-entity> 
-        <a-entity light="type: directional; intensity: 0.8; color: #FFF; position: -1 2 1;"></a-entity>
-        <a-entity light="type: directional; intensity: 0.6; color: #FFF; position: 1 2 -1;"></a-entity>
+
+        <a-entity light="type: ambient; intensity: 2.5; color: #FFFFFF;"></a-entity>
+        <a-entity light="type: directional; intensity: 1.5; position: 1 4 2; color: #FFFFFF;"></a-entity>
+        <a-entity light="type: directional; intensity: 0.8; position: -1 -2 -1; color: #FFEEEE;"></a-entity>
+
 
         <a-entity id="obj-acorn" 
                   gltf-model="url(acorn.glb)" 
-                  scale="5 5 5" 
-                  position="-0.5 1.6 -2"
+                  scale="15 15 15" 
+                  position="-0.8 1.6 -2.5"
                   class="clickable"
                   drag-move>
         </a-entity>
 
         <a-entity id="obj-pain" 
                   gltf-model="url(pain.glb)" 
-                  scale="0.005 0.005 0.005" 
-                  position="0.5 1.6 -2" 
+                  scale="0.015 0.015 0.015" 
+                  position="0.8 1.6 -2.5" 
+                  rotation="0 0 0"
                   class="clickable"
                   drag-move>
         </a-entity>
