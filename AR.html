@@ -1,55 +1,59 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Fixed AR Viewer</title>
+    <title>Universal AR Viewer</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.0.0/dist/aframe-extras.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 
     <style>
-        /* --- 1. 起動画面のデカいボタン --- */
+        /* --- 1. 起動画面 (デザイン維持) --- */
         #start-screen {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
-            background-color: rgba(0, 0, 0, 0.8);
+            background-color: rgba(0, 0, 0, 0.9);
             z-index: 9999;
             display: flex;
             justify-content: center;
             align-items: center;
             flex-direction: column;
+            transition: opacity 0.5s;
         }
         #start-btn {
-            padding: 20px 50px;
-            font-size: 24px;
+            padding: 15px 40px;
+            font-size: 20px;
             background-color: #4CC3D9;
             color: white;
             border: none;
             border-radius: 50px;
             font-weight: bold;
-            box-shadow: 0 0 15px #4CC3D9;
+            box-shadow: 0 0 20px rgba(76, 195, 217, 0.5);
+            cursor: pointer;
         }
+        #start-btn:active { transform: scale(0.95); }
         
-        /* --- 2. AR中の操作ボタン (画面上部) --- */
+        /* --- 2. 操作パネル (上部) --- */
         #ar-ui {
             position: fixed;
-            top: 20px;
-            left: 0;
-            width: 100%;
+            top: 20px; left: 0; width: 100%;
             text-align: center;
             z-index: 8888;
             display: none; /* 最初は隠す */
-            pointer-events: none; /* ボタン以外はタッチを通す */
+            pointer-events: none;
         }
         .model-btn {
             pointer-events: auto;
             background: rgba(0,0,0,0.6);
             color: #fff;
-            border: 2px solid #fff;
+            border: 1px solid #fff;
             border-radius: 20px;
             padding: 10px 20px;
             margin: 0 5px;
-            font-size: 16px;
+            font-size: 14px;
+            font-weight: bold;
         }
         .model-btn.active {
             background: #FFC65D;
@@ -60,37 +64,39 @@
         /* デバッグログ */
         #log {
             position: fixed;
-            bottom: 10px;
-            left: 10px;
+            bottom: 10px; left: 10px;
             color: yellow;
-            font-size: 14px;
+            font-size: 12px;
             z-index: 9999;
             pointer-events: none;
+            text-shadow: 1px 1px 2px black;
         }
     </style>
 
     <script>
-        // モデル切り替え用変数
-        let currentModel = 'acorn'; 
-
-        // ログ表示
-        function log(msg) {
-            document.getElementById('log').innerText = msg;
+        function log(text) {
+            document.getElementById('log').innerText = text;
         }
 
-        // ARを開始する関数
+        // AR開始ボタンの処理
         function startAR() {
-            const scene = document.querySelector('a-scene');
-            // A-Frameの機能でARモードに入る
-            scene.enterVR(); 
+            // スタート画面をフェードアウトして消す
+            const screen = document.getElementById('start-screen');
+            screen.style.opacity = '0';
+            setTimeout(() => {
+                screen.style.display = 'none';
+                document.getElementById('ar-ui').style.display = 'block';
+            }, 500);
+
+            // 初期モデルを表示
+            switchModel('acorn');
+            log("Camera Active. Objects are in front of you.");
         }
 
-        // モデル切り替えボタン
+        // モデル切り替え
         function switchModel(name) {
-            currentModel = name;
-            
-            // ボタンの色を変える
-            document.querySelectorAll('.model-btn').forEach(btn => btn.classList.remove('active'));
+            // ボタンの見た目更新
+            document.querySelectorAll('.model-btn').forEach(b => b.classList.remove('active'));
             document.getElementById('btn-' + name).classList.add('active');
 
             // 表示切り替え
@@ -100,69 +106,21 @@
             if (name === 'acorn') {
                 acorn.setAttribute('visible', 'true');
                 pain.setAttribute('visible', 'false');
-                
-                // 位置をリセット（目の前に持ってくる）
-                resetPosition(acorn);
             } else {
                 acorn.setAttribute('visible', 'false');
                 pain.setAttribute('visible', 'true');
-                
-                resetPosition(pain);
             }
-            log("Switched to: " + name);
         }
 
-        // オブジェクトをカメラの目の前に強制移動する関数
-        function resetPosition(element) {
-            const camera = document.querySelector('[camera]');
-            const pos = new THREE.Vector3();
-            const dir = new THREE.Vector3();
-            
-            camera.object3D.getWorldPosition(pos);
-            camera.object3D.getWorldDirection(dir);
-            
-            // 目の前 0.5m の位置
-            dir.multiplyScalar(-0.5);
-            pos.add(dir);
-            
-            // 高さを少し下げる
-            pos.y -= 0.2;
-
-            element.object3D.position.copy(pos);
-        }
-
-        // A-Frameコンポーネント
-        AFRAME.registerComponent('app-manager', {
+        // A-Frameロード完了時の処理
+        AFRAME.registerComponent('init-scene', {
             init: function() {
-                const scene = this.el.sceneEl;
-
-                // ARモードに入った瞬間
-                scene.addEventListener('enter-vr', () => {
-                    document.getElementById('start-screen').style.display = 'none';
-                    document.getElementById('ar-ui').style.display = 'block';
-                    
-                    // 最初はドングリを表示して目の前に置く
-                    setTimeout(() => {
-                        switchModel('acorn');
-                        log("AR Active. Look around.");
-                    }, 1000);
-                });
-
-                // ARから抜けた瞬間
-                scene.addEventListener('exit-vr', () => {
-                    document.getElementById('start-screen').style.display = 'flex';
-                    document.getElementById('ar-ui').style.display = 'none';
-                    location.reload(); // バグ防止のためリロード
-                });
-            },
-            
-            tick: function() {
-                // 距離判定ロジック
-                const acorn = document.getElementById('obj-acorn');
-                const pain = document.getElementById('obj-pain');
+                log("Ready. Tap START AR.");
                 
-                // 両方表示されているときだけ計算（今回は切り替え式にしたので、もし両方出すならここを修正）
-                // 今回は「切り替え式」にしたため、距離判定は一旦「ログ出し」のみにします
+                // カメラ映像がロードされたらサイズ調整（スマホでの表示崩れ防止）
+                window.addEventListener('resize', () => {
+                    this.el.sceneEl.resize();
+                });
             }
         });
     </script>
@@ -172,37 +130,40 @@
 
     <div id="start-screen">
         <button id="start-btn" onclick="startAR()">START AR</button>
-        <p style="color:white; margin-top:10px;">Make sure you use HTTPS</p>
+        <p style="color:#aaa; margin-top:15px; font-size:12px;">Camera permission required</p>
     </div>
 
     <div id="ar-ui">
-        <button id="btn-acorn" class="model-btn active" onclick="switchModel('acorn')">Acorn</button>
+        <button id="btn-acorn" class="model-btn" onclick="switchModel('acorn')">Acorn</button>
         <button id="btn-pain" class="model-btn" onclick="switchModel('pain')">Pineapple</button>
     </div>
 
-    <div id="log">Ready.</div>
+    <div id="log">Loading...</div>
 
     <a-scene embedded 
+             arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
              vr-mode-ui="enabled: false"
-             webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: #ar-ui"
-             app-manager>
+             renderer="logarithmicDepthBuffer: true;"
+             init-scene>
 
-        <a-entity camera position="0 1.6 0" look-controls="pointerLockEnabled: false"></a-entity>
+        <a-entity camera look-controls position="0 1.6 0"></a-entity>
 
-        <a-entity light="type: ambient; intensity: 2;"></a-entity>
-        <a-entity light="type: directional; intensity: 1;" position="1 1 1"></a-entity>
+        <a-entity light="type: ambient; intensity: 1.5;"></a-entity>
+        <a-entity light="type: directional; intensity: 1;" position="1 1 0"></a-entity>
 
         <a-entity id="obj-acorn" 
                   gltf-model="url(acorn.glb)" 
                   scale="5 5 5" 
-                  position="0 0 -1" 
+                  position="0 0 -2" 
                   visible="false">
+             <a-animation attribute="rotation" to="0 360 0" repeat="indefinite" dur="10000" easing="linear"></a-animation>
         </a-entity>
 
         <a-entity id="obj-pain" 
                   gltf-model="url(pain.glb)" 
                   scale="0.005 0.005 0.005" 
-                  position="0 0 -1" 
+                  position="0 0 -2" 
+                  rotation="0 0 0"
                   visible="false">
         </a-entity>
 
