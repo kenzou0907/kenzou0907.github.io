@@ -1,90 +1,156 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Acorn & Pine AR</title>
-    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-    <script src="https://unpkg.com/aframe-extras@7.0.0/dist/aframe-extras.min.js"></script>
+    <title>Markerless AR Interaction</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.0.0/dist/aframe-extras.min.js"></script>
 
     <style>
-        /* 標準のVRボタンを隠す */
-        .a-enter-vr { display: none; }
-
-        /* 自作のARボタンのデザイン */
-        #ar-start-button {
+        /* UIボタンのスタイル */
+        #ui-overlay {
             position: fixed;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 200px;
-            padding: 15px;
-            background-color: #007aff; /* 青色 */
-            color: white;
-            border: none;
-            border-radius: 30px;
-            font-size: 18px;
-            font-weight: bold;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            z-index: 9999;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
             text-align: center;
+            z-index: 999;
+            display: none; /* AR開始前は隠す */
+        }
+        .btn {
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            border: 2px solid white;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 20px;
+            margin: 0 10px;
             cursor: pointer;
         }
-        
-        #ar-start-button:active {
-            background-color: #005ecb;
-            transform: translateX(-50%) scale(0.95);
+        .btn.active {
+            background: #4CC3D9; /* 選択中の色 */
+            border-color: #4CC3D9;
+        }
+        #status-msg {
+            position: fixed;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px #000;
+            z-index: 999;
+            display: none;
         }
     </style>
-</head>
-<body>
-
-    <a-scene 
-        vr-mode-ui="enabled: false"
-        webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: #overlay-ui;"
-        renderer="colorManagement: true;">
-
-        <a-assets>
-            <a-asset-item id="acorn-model" src="acorn.glb"></a-asset-item>
-            <a-asset-item id="pine-model" src="pine.glb"></a-asset-item>
-        </a-assets>
-
-        <a-entity 
-            gltf-model="#acorn-model" 
-            position="-0.3 0 -1" 
-            scale="0.1 0.1 0.1">
-        </a-entity>
-
-        <a-entity 
-            gltf-model="#pine-model" 
-            position="0.3 0 -1" 
-            scale="0.1 0.1 0.1">
-        </a-entity>
-
-        <a-entity camera position="0 1.6 0" look-controls="magicWindowTrackingEnabled: false"></a-entity>
-
-    </a-scene>
-
-    <div id="overlay-ui">
-        <button id="ar-start-button">ARを開始する</button>
-    </div>
 
     <script>
-        const scene = document.querySelector('a-scene');
-        const button = document.getElementById('ar-start-button');
+        // 現在選択されているモデル (0=なし, 1=ドングリ, 2=パイナップル)
+        let selectedModelId = 'model-acorn';
 
-        button.addEventListener('click', () => {
-            // WebXRのARセッションを開始する命令
-            scene.enterVR(); 
+        // --- AR Hit Test (平面検知と配置) ---
+        AFRAME.registerComponent('ar-controller', {
+            init: function () {
+                const scene = this.el.sceneEl;
+                this.reticle = document.querySelector('#reticle');
+                this.acorn = document.querySelector('#model-acorn');
+                this.pain = document.querySelector('#model-pain');
+                
+                // ARセッションが始まったらUIを表示
+                scene.addEventListener('enter-vr', () => {
+                    document.getElementById('ui-overlay').style.display = 'block';
+                    document.getElementById('status-msg').style.display = 'block';
+                });
+                
+                // 画面タップ時の処理
+                scene.addEventListener('click', () => {
+                    // レティクルが表示されている（床を認識している）場合のみ実行
+                    if (this.reticle.getAttribute('visible')) {
+                        // 選択中のモデルをレティクルの位置に移動
+                        const targetModel = document.querySelector('#' + selectedModelId);
+                        
+                        // レティクルの位置と回転をコピー
+                        targetModel.object3D.position.copy(this.reticle.object3D.position);
+                        
+                        // モデルを表示状態にする
+                        targetModel.setAttribute('visible', 'true');
+                    }
+                });
+            }
         });
-        
-        // AR/VRモードに入ったらボタンを非表示にするなどの処理
-        scene.addEventListener('enter-vr', () => {
-             button.style.display = 'none';
+
+        // --- 距離判定（前回と同じロジック） ---
+        AFRAME.registerComponent('distance-check', {
+            tick: function () {
+                const acorn = document.querySelector('#model-acorn');
+                const pain = document.querySelector('#model-pain');
+                const msg = document.getElementById('status-msg');
+
+                // 両方が表示されている場合のみ計算
+                if (acorn.getAttribute('visible') && pain.getAttribute('visible')) {
+                    const dist = acorn.object3D.position.distanceTo(pain.object3D.position);
+                    
+                    if (dist < 0.5) {
+                        msg.innerText = "HIT !! (Interaction Active)";
+                        msg.style.color = "red";
+                        // 衝突演出：パイナップルを回す
+                        pain.object3D.rotation.y += 0.05;
+                    } else {
+                        msg.innerText = "Distance: " + dist.toFixed(2) + "m";
+                        msg.style.color = "white";
+                    }
+                } else {
+                    msg.innerText = "Tap floor to place models";
+                }
+            }
         });
-        scene.addEventListener('exit-vr', () => {
-             button.style.display = 'block';
-        });
+
+        // ボタン操作用関数
+        function selectModel(id) {
+            selectedModelId = id;
+            // ボタンの見た目切り替え
+            document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+            if(id === 'model-acorn') document.getElementById('btn-acorn').classList.add('active');
+            else document.getElementById('btn-pain').classList.add('active');
+        }
     </script>
+</head>
+
+<body>
+    <div id="status-msg">Tap "Start AR"</div>
+    <div id="ui-overlay">
+        <button id="btn-acorn" class="btn active" onclick="selectModel('model-acorn')">Select Acorn</button>
+        <button id="btn-pain" class="btn" onclick="selectModel('model-pain')">Select Pineapple</button>
+    </div>
+
+    <a-scene embedded 
+             webxr="requiredFeatures: hit-test, local-floor; optionalFeatures: dom-overlay; overlayElement: #ui-overlay"
+             ar-controller
+             distance-check>
+
+        <a-entity id="model-acorn"
+                  gltf-model="url(acorn.glb)"
+                  scale="5 5 5"
+                  visible="false">
+        </a-entity>
+
+        <a-entity id="model-pain"
+                  gltf-model="url(pain.glb)"
+                  scale="0.005 0.005 0.005"
+                  visible="false">
+        </a-entity>
+
+        <a-entity id="reticle"
+                  ar-hit-test-target
+                  geometry="primitive: ring; radiusInner: 0.1; radiusOuter: 0.15"
+                  material="color: cyan; shader: flat"
+                  rotation="-90 0 0"
+                  visible="false">
+        </a-entity>
+
+        <a-entity light="type: ambient; intensity: 1;"></a-entity>
+        <a-entity light="type: directional; intensity: 1;" position="-1 1 0"></a-entity>
+
+    </a-scene>
 </body>
 </html>
