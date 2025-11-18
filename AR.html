@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Mobile Drag Fixed</title>
+    <title>AR Final Real Background</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
@@ -9,14 +9,33 @@
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 
     <style>
-        /* 【重要】スマホでのスクロール・ズームを完全禁止にする設定 */
+        /* --- 1. 背景透過とカメラ表示のための重要設定 --- */
         body, html {
-            width: 100%; height: 100%;
             margin: 0; padding: 0; overflow: hidden;
-            touch-action: none; /* これがスワイプで動かない原因への対策 */
+            width: 100%; height: 100%;
+            background-color: transparent !important; /* 背景を透明に */
+            touch-action: none; /* スクロール禁止（操作性確保） */
+        }
+        
+        /* A-Frameのキャンバスを透明にする */
+        .a-canvas {
+            background-color: transparent !important;
+            display: block !important;
         }
 
-        /* UI周り */
+        /* AR.jsが生成するビデオタグを強制的に背景に配置 */
+        #arjs-video {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            z-index: -100 !important; /* 一番後ろへ */
+            display: block !important;
+            object-fit: cover !important;
+        }
+
+        /* UIレイヤー */
         #ui-layer {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none; z-index: 9999;
@@ -29,7 +48,7 @@
         }
         #debug-text {
             position: absolute; bottom: 20px; left: 10px; 
-            color: lime; font-family: monospace; font-size: 14px;
+            color: lime; font-family: monospace; font-size: 12px;
             text-shadow: 1px 1px 1px black;
             background: rgba(0,0,0,0.7); padding: 5px;
         }
@@ -46,35 +65,31 @@
             if(el) el.innerHTML = msg;
         }
 
-        // --- ドラッグ操作 (スマホ対応強化版) ---
+        // --- ドラッグ操作 (操作性はそのまま維持) ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isDragging = false;
-                this.speed = 5.0; // 移動感度
+                this.speed = 5.0; 
 
-                // A. タッチ開始
                 this.el.addEventListener('mousedown', (e) => {
                     this.isDragging = true;
-                    this.el.querySelector('.hit-box').setAttribute('material', 'color', '#00FF00'); 
-                    this.el.querySelector('.hit-box').setAttribute('opacity', '0.5');
-                    log("Touch Start");
+                    // 操作中は少しだけ色をつける（フィードバック）
+                    this.el.querySelector('.hit-box').setAttribute('opacity', '0.2');
+                    log("Grip!");
                 });
 
-                // B. タッチ終了
                 window.addEventListener('mouseup', () => {
                     if (this.isDragging) {
                         this.isDragging = false;
-                        this.el.querySelector('.hit-box').setAttribute('material', 'color', '#FF0000'); 
-                        this.el.querySelector('.hit-box').setAttribute('opacity', '0.3');
-                        log("Touch End");
+                        // 離したら透明に戻す
+                        this.el.querySelector('.hit-box').setAttribute('opacity', '0.01');
+                        log("Release");
                     }
                 });
 
-                // C. タッチ移動 (Touch Move) - スマホ用
+                // スマホ用タッチ移動
                 window.addEventListener('touchmove', (e) => {
                     if (!this.isDragging) return;
-                    
-                    // 【重要】ブラウザのスクロールをキャンセルする
                     if(e.cancelable) e.preventDefault();
 
                     const touch = e.touches[0];
@@ -82,12 +97,9 @@
                     const screenY = -(touch.clientY / window.innerHeight) * 2 + 1;
 
                     this.updatePosition(screenX, screenY);
-                    
-                    // デバッグ表示
-                    log("Move: " + touch.clientX.toFixed(0) + ", " + touch.clientY.toFixed(0));
-                }, { passive: false }); // passive: false が重要
+                }, { passive: false });
 
-                // D. マウス移動 (Mouse Move) - PC用
+                // PC用マウス移動
                 window.addEventListener('mousemove', (e) => {
                     if (!this.isDragging) return;
                     const screenX = (e.clientX / window.innerWidth) * 2 - 1;
@@ -97,9 +109,7 @@
             },
 
             updatePosition: function(screenX, screenY) {
-                // X軸移動
                 this.el.object3D.position.x = screenX * this.speed;
-                // Y軸移動 (少し上に表示)
                 this.el.object3D.position.y = (screenY * this.speed) + 1.6;
             }
         });
@@ -119,7 +129,7 @@
                     status.style.color = "red";
                     w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
                 } else {
-                    status.innerText = "Drag Red Box";
+                    status.innerText = "Drag Objects";
                     status.style.color = "yellow";
                     w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = 0;
                 }
@@ -137,13 +147,13 @@
     <button id="start-btn" onclick="start()">START AR</button>
 
     <div id="ui-layer">
-        <div id="status-text">Touch RED BOX & Drag</div>
+        <div id="status-text">Drag Invisible Box</div>
         <div id="debug-text">Ready</div>
     </div>
 
     <a-scene embedded 
-             arjs="sourceType: webcam; debugUIEnabled: false;"
-             renderer="logarithmicDepthBuffer: true; colorManagement: true;"
+             arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
+             renderer="logarithmicDepthBuffer: true; colorManagement: true; alpha: true;"
              vr-mode-ui="enabled: false"
              cursor="rayOrigin: mouse" 
              raycaster="objects: .clickable"
@@ -155,12 +165,18 @@
         <a-entity light="type: directional; intensity: 2.0; position: 1 2 1;"></a-entity>
 
         <a-entity id="wrapper-acorn" position="-1.0 1.6 -3.0" drag-wrapper>
-            <a-box class="hit-box clickable" scale="1.5 1.5 1.5" material="color: #FF0000; opacity: 0.3; transparent: true;"></a-box>
+            <a-box class="hit-box clickable" 
+                   scale="1.5 1.5 1.5" 
+                   material="color: #FF0000; opacity: 0.01; transparent: true;">
+            </a-box>
             <a-entity gltf-model="url(acorn.glb)" scale="12 12 12" position="0 -0.5 0"></a-entity>
         </a-entity>
 
         <a-entity id="wrapper-pain" position="1.0 1.6 -3.0" drag-wrapper>
-            <a-box class="hit-box clickable" scale="1.5 1.5 1.5" material="color: #FF0000; opacity: 0.3; transparent: true;"></a-box>
+            <a-box class="hit-box clickable" 
+                   scale="1.5 1.5 1.5" 
+                   material="color: #FF0000; opacity: 0.01; transparent: true;">
+            </a-box>
             <a-entity gltf-model="url(pain.glb)" scale="0.012 0.012 0.012" position="0 -0.5 0"></a-entity>
         </a-entity>
 
