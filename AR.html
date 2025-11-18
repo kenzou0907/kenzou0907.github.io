@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Universal AR Viewer - Lighting Fixed</title>
+    <title>AR Color Fixed</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -10,7 +10,7 @@
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 
     <style>
-        /* --- 1. 起動画面 (デザイン維持) --- */
+        /* UIデザインは変更なし */
         #start-screen {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -25,22 +25,21 @@
         #start-btn {
             padding: 15px 40px;
             font-size: 20px;
-            background-color: #4CC3D9;
-            color: white;
+            background-color: #FFC65D; /* 色を目立つ黄色に変更 */
+            color: black;
             border: none;
             border-radius: 50px;
-            box-shadow: 0 0 20px rgba(76, 195, 217, 0.5);
+            font-weight: bold;
+            box-shadow: 0 0 20px rgba(255, 198, 93, 0.5);
             cursor: pointer;
         }
-        #start-btn:active { transform: scale(0.95); }
         
-        /* --- 2. 操作パネル (上部) --- */
         #ar-ui {
             position: fixed;
             top: 20px; left: 0; width: 100%;
             text-align: center;
             z-index: 8888;
-            display: none; /* 最初は隠す */
+            display: none;
             pointer-events: none;
         }
         .model-btn {
@@ -59,8 +58,6 @@
             color: #000;
             border-color: #FFC65D;
         }
-
-        /* デバッグログ */
         #log {
             position: fixed;
             bottom: 10px; left: 10px;
@@ -85,8 +82,8 @@
                 document.getElementById('ar-ui').style.display = 'block';
             }, 500);
 
-            switchModel('acorn'); // 最初のモデルを表示
-            log("Camera Active. Objects are in front of you.");
+            switchModel('acorn');
+            log("Color Correction Active.");
         }
 
         function switchModel(name) {
@@ -105,6 +102,38 @@
             }
         }
 
+        // --- 【重要】マテリアル（材質）を強制修正する機能 ---
+        AFRAME.registerComponent('fix-material', {
+            init: function () {
+                this.el.addEventListener('model-loaded', () => {
+                    const mesh = this.el.getObject3D('mesh');
+                    if (!mesh) return;
+
+                    mesh.traverse((node) => {
+                        if (node.isMesh) {
+                            // 1. 金属感をゼロにする（黒くなる原因を除去）
+                            node.material.metalness = 0;
+                            // 2. 表面をザラザラにする（光を拡散させる）
+                            node.material.roughness = 1;
+                            
+                            // 3. もし色が暗すぎたら明るくする補正
+                            if (node.material.color) {
+                                // 色情報の輝度を少し上げる
+                                node.material.emissive = node.material.color;
+                                node.material.emissiveIntensity = 0.2;
+                            }
+                            
+                            // 4. 透過設定を無効化（パイナップル対策）
+                            if(node.material.transmission) node.material.transmission = 0;
+
+                            node.material.needsUpdate = true;
+                        }
+                    });
+                    log("Model Loaded & Colors Fixed");
+                });
+            }
+        });
+
         AFRAME.registerComponent('init-scene', {
             init: function() {
                 log("Ready. Tap START AR.");
@@ -120,7 +149,7 @@
 
     <div id="start-screen">
         <button id="start-btn" onclick="startAR()">START AR</button>
-        <p style="color:#aaa; margin-top:15px; font-size:12px;">Camera permission required</p>
+        <p style="color:#aaa; margin-top:15px; font-size:12px;">Use HTTPS / Chrome or Safari</p>
     </div>
 
     <div id="ar-ui">
@@ -131,21 +160,22 @@
     <div id="log">Loading...</div>
 
     <a-scene embedded 
-             arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
+             arjs="sourceType: webcam; debugUIEnabled: false;"
+             renderer="logarithmicDepthBuffer: true; colorManagement: true;"
              vr-mode-ui="enabled: false"
-             renderer="logarithmicDepthBuffer: true;"
              init-scene>
 
         <a-entity camera look-controls position="0 1.6 0"></a-entity>
 
-        <a-entity light="type: ambient; intensity: 1.8; color: #FFF;"></a-entity> 
-        <a-entity light="type: directional; intensity: 0.8; color: #FFF; position: -1 2 1;"></a-entity>
-        <a-entity light="type: directional; intensity: 0.6; color: #FFF; position: 1 2 -1;"></a-entity>
-        <a-entity light="type: directional; intensity: 0.4; color: #FFF; position: 0 -1 0;"></a-entity> <a-entity id="obj-acorn" 
+        <a-entity light="type: ambient; intensity: 2.0; color: #ffffff;"></a-entity>
+        <a-entity light="type: directional; intensity: 1.0; position: 1 1 1;"></a-entity>
+
+        <a-entity id="obj-acorn" 
                   gltf-model="url(acorn.glb)" 
                   scale="5 5 5" 
                   position="0 0 -2" 
-                  visible="false">
+                  visible="false"
+                  fix-material>
              <a-animation attribute="rotation" to="0 360 0" repeat="indefinite" dur="10000" easing="linear"></a-animation>
         </a-entity>
 
@@ -154,7 +184,8 @@
                   scale="0.005 0.005 0.005" 
                   position="0 0 -2" 
                   rotation="0 0 0"
-                  visible="false">
+                  visible="false"
+                  fix-material>
         </a-entity>
 
     </a-scene>
