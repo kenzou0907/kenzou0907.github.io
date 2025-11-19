@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Final Center</title>
+    <title>AR Direct Touch</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
@@ -9,10 +9,11 @@
     <script src="https://raw.githack.com/AR-js-org/AR.js/3.3.2/aframe/build/aframe-ar.js"></script>
 
     <style>
-        /* 背景透明化設定 */
+        /* 背景透明化 */
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden; background-color: transparent !important;
+            touch-action: none; /* スクロール完全無効化 */
         }
         .a-canvas {
             background-color: transparent !important;
@@ -24,7 +25,7 @@
             display: block !important;
         }
 
-        /* スタート画面 */
+        /* UI: スタート画面 */
         #launcher {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 99999;
@@ -37,28 +38,24 @@
             box-shadow: 0 0 25px #00C853; cursor: pointer;
         }
 
-        /* リセットボタン */
+        /* UI: 操作ボタン群 */
         #reset-btn {
             position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
             z-index: 99999;
             padding: 15px 30px; 
-            background: rgba(0, 122, 255, 0.8);
-            color: white; border: 2px solid white; border-radius: 30px;
+            background: rgba(0, 122, 255, 0.8); color: white; 
+            border: 2px solid white; border-radius: 30px;
             font-size: 18px; font-weight: bold; cursor: pointer;
             display: none;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
         }
-        #reset-btn:active { transform: translateX(-50%) scale(0.95); }
-
-        /* 背景修正ボタン (念のため) */
         #fix-bg-btn {
             position: fixed; bottom: 30px; right: 20px; z-index: 99999;
             padding: 8px; background: rgba(0,0,0,0.5); color: #ccc;
             border: 1px solid #888; border-radius: 5px; font-size: 10px;
             display: none;
         }
-
-        /* ステータス表示 */
+        
+        /* ステータス */
         #status-text {
             position: fixed; top: 20px; width: 100%; text-align: center;
             color: yellow; font-weight: bold; font-size: 20px;
@@ -67,81 +64,62 @@
     </style>
 
     <script>
-        // --- カメラ起動 ---
         function startCamera() {
-            const btn = document.getElementById('launch-btn');
-            btn.innerText = "Starting...";
-            
+            document.getElementById('launch-btn').innerText = "Starting...";
             setTimeout(() => {
                 document.getElementById('launcher').style.display = 'none';
                 document.getElementById('reset-btn').style.display = 'block';
                 document.getElementById('fix-bg-btn').style.display = 'block';
-                
                 document.querySelector('a-scene').play();
-                
-                // 起動直後に位置調整
                 setTimeout(resetPositions, 1000);
             }, 500);
         }
 
-        // --- 位置リセット（目の前・中央寄りに配置） ---
+        // --- 位置リセット ---
         function resetPositions() {
             const camera = document.querySelector('[camera]');
             const acorn = document.getElementById('wrapper-acorn');
             const pain = document.getElementById('wrapper-pain');
 
             const cameraPos = camera.object3D.position;
-            const distance = 2.5; // 目の前2.5m
-            
-            // 前方ベクトルの計算
-            const forward = new THREE.Vector3(0, 0, -1);
-            forward.applyQuaternion(camera.object3D.quaternion);
-            forward.multiplyScalar(distance);
-
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.object3D.quaternion).multiplyScalar(2.5);
             const centerPos = cameraPos.clone().add(forward);
-
-            // 左右ベクトル
-            const right = new THREE.Vector3(1, 0, 0);
-            right.applyQuaternion(camera.object3D.quaternion);
+            const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.object3D.quaternion);
             
-            // ★ここを修正: 0.8 -> 0.5 (より内側に)
+            // 内側寄り (0.5m)
             const offset = 0.5;
-
-            // ドングリ：中心から左へ0.5m
-            const acornPos = centerPos.clone().add(right.clone().multiplyScalar(-offset));
-            // パイナップル：中心から右へ0.5m
-            const painPos = centerPos.clone().add(right.clone().multiplyScalar(offset));
-
-            acorn.object3D.position.copy(acornPos);
-            pain.object3D.position.copy(painPos);
+            acorn.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(-offset)));
+            pain.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(offset)));
         }
 
-        // --- 背景透明化 ---
         function forceTransparent() {
             document.body.style.backgroundColor = 'transparent';
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- ドラッグ操作 ---
+        // --- ドラッグ操作 (改良版) ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isDragging = false;
                 this.speed = 5.0; 
 
-                this.el.addEventListener('mousedown', () => {
+                // タッチ開始: 親要素(wrapper)へのバブリングを捕捉
+                this.el.addEventListener('mousedown', (e) => {
                     this.isDragging = true;
-                    this.el.querySelector('.hit-box').setAttribute('opacity', '0.3');
+                    // ヒットボックスの色を変えて反応を示す
+                    const box = this.el.querySelector('.hit-box');
+                    if(box) box.setAttribute('opacity', '0.3');
                 });
 
                 window.addEventListener('mouseup', () => {
                     this.isDragging = false;
-                    this.el.querySelector('.hit-box').setAttribute('opacity', '0.01');
+                    const box = this.el.querySelector('.hit-box');
+                    if(box) box.setAttribute('opacity', '0.01');
                 });
 
                 const updatePos = (cx, cy) => {
                     const sx = (cx / window.innerWidth) * 2 - 1;
                     const sy = -(cy / window.innerHeight) * 2 + 1;
-                    // 画面中央からの相対操作
                     this.el.object3D.position.x = sx * 5.0;
                     this.el.object3D.position.y = (sy * 5.0) + 1.6;
                 };
@@ -182,14 +160,9 @@
 </head>
 
 <body>
-    <div id="launcher">
-        <button id="launch-btn" onclick="startCamera()">START CAMERA</button>
-    </div>
-
+    <div id="launcher"><button id="launch-btn" onclick="startCamera()">START CAMERA</button></div>
     <button id="reset-btn" onclick="resetPositions()">RESET POSITION</button>
-
     <button id="fix-bg-btn" onclick="forceTransparent()">Fix BG</button>
-
     <div id="status-text">Waiting...</div>
 
     <a-scene embedded
@@ -197,22 +170,21 @@
         renderer="logarithmicDepthBuffer: true; colorManagement: true; alpha: true;"
         vr-mode-ui="enabled: false"
         cursor="rayOrigin: mouse" 
-        raycaster="objects: .clickable"
+        raycaster="objects: .clickable" 
         collision-check>
 
         <a-entity camera position="0 1.6 0"></a-entity>
-
         <a-entity light="type: ambient; intensity: 1.0; color: #fff;"></a-entity>
         <a-entity light="type: directional; intensity: 1.0; position: 1 2 1;"></a-entity>
 
         <a-entity id="wrapper-acorn" position="-0.5 1.6 -3.0" drag-wrapper>
-            <a-box class="hit-box clickable" scale="1.5 1.5 1.5" material="color:red; opacity:0.01; transparent:true;"></a-box>
-            <a-entity gltf-model="url(acorn.glb)" scale="12 12 12" position="0 -0.5 0"></a-entity>
+            <a-box class="hit-box clickable" scale="1.2 1.2 1.2" material="color:red; opacity:0.01; transparent:true;"></a-box>
+            <a-entity class="clickable" gltf-model="url(acorn.glb)" scale="12 12 12" position="0 0 0"></a-entity>
         </a-entity>
 
         <a-entity id="wrapper-pain" position="0.5 1.6 -3.0" drag-wrapper>
-            <a-box class="hit-box clickable" scale="1.5 1.5 1.5" material="color:red; opacity:0.01; transparent:true;"></a-box>
-            <a-entity gltf-model="url(pain.glb)" scale="0.012 0.012 0.012" position="0 -0.5 0"></a-entity>
+            <a-box class="hit-box clickable" scale="1.2 1.2 1.2" material="color:red; opacity:0.01; transparent:true;"></a-box>
+            <a-entity class="clickable" gltf-model="url(pain.glb)" scale="0.012 0.012 0.012" position="0 0 0"></a-entity>
         </a-entity>
 
     </a-scene>
