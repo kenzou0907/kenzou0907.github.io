@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Fixed Drag</title>
+    <title>AR Absolute Position</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
@@ -13,7 +13,7 @@
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden; background-color: transparent !important;
-            touch-action: none; /* スクロール無効化 */
+            touch-action: none;
         }
         .a-canvas {
             background-color: transparent !important;
@@ -25,7 +25,7 @@
             display: block !important;
         }
 
-        /* スタート画面 */
+        /* UI */
         #launcher {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 99999;
@@ -37,8 +37,7 @@
             color: white; background: #00C853; border: none; border-radius: 50px;
             box-shadow: 0 0 25px #00C853; cursor: pointer;
         }
-
-        /* 操作UI */
+        
         #reset-btn {
             position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
             z-index: 99999;
@@ -47,7 +46,6 @@
             color: white; border: 2px solid white; border-radius: 30px;
             font-size: 18px; font-weight: bold; cursor: pointer;
             display: none;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
         }
         #fix-bg-btn {
             position: fixed; bottom: 30px; right: 20px; z-index: 99999;
@@ -79,7 +77,7 @@
             const camera = document.querySelector('[camera]');
             const acorn = document.getElementById('wrapper-acorn');
             const pain = document.getElementById('wrapper-pain');
-
+            
             const cameraPos = camera.object3D.position;
             const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.object3D.quaternion).multiplyScalar(2.5);
             const centerPos = cameraPos.clone().add(forward);
@@ -95,44 +93,47 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 【修正版】バグ修正済みドラッグ操作 ---
+        // --- 【修正版】絶対座標ドラッグ (指の位置 = オブジェクトの位置) ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isDragging = false;
-                this.speed = 2.0; // 感度は低め(2.0)
+                
+                // 指の動きに対する追従係数（画面サイズと3D空間の比率）
+                // 3.0 〜 4.0 くらいが指の真下に来やすいです
+                this.factor = 4.0; 
 
-                // 計算用変数の初期化
-                this.startScreenX = 0;
-                this.startScreenY = 0;
-                this.startObjectPosition = new THREE.Vector3();
+                // 共通の移動処理関数
+                const moveToFinger = (cx, cy) => {
+                    // 画面座標 (-1 ~ 1)
+                    const sx = (cx / window.innerWidth) * 2 - 1;
+                    const sy = -(cy / window.innerHeight) * 2 + 1;
 
-                // === 1. スマホ用タッチ開始 (ここが重要) ===
+                    // 絶対座標をセット
+                    this.el.object3D.position.x = sx * this.factor;
+                    
+                    // Y座標（高さ）: 指で隠れないよう少し上(+1.6)に表示
+                    this.el.object3D.position.y = (sy * this.factor) + 1.6;
+                };
+
+                // --- タッチ開始 ---
                 this.el.addEventListener('touchstart', (e) => {
-                    // イベント伝播を止めて、後ろのオブジェクトまで反応しないようにする
-                    if(e.cancelable) e.preventDefault(); 
-                    
+                    if(e.cancelable) e.preventDefault();
                     this.isDragging = true;
-                    this.el.object3D.scale.set(0.95, 0.95, 0.95); // 触った合図
-
-                    // 最初の指の位置を正しく記録
-                    const touch = e.touches[0];
-                    this.startScreenX = touch.clientX;
-                    this.startScreenY = touch.clientY;
+                    this.el.object3D.scale.set(0.95, 0.95, 0.95);
                     
-                    // 現在のオブジェクトの位置を記録
-                    this.startObjectPosition.copy(this.el.object3D.position);
+                    // 触れた瞬間にその場所へ移動させる
+                    const touch = e.touches[0];
+                    moveToFinger(touch.clientX, touch.clientY);
                 });
 
-                // === 2. PC用マウス開始 ===
+                // --- マウスダウン ---
                 this.el.addEventListener('mousedown', (e) => {
                     this.isDragging = true;
                     this.el.object3D.scale.set(0.95, 0.95, 0.95);
-                    this.startScreenX = e.clientX;
-                    this.startScreenY = e.clientY;
-                    this.startObjectPosition.copy(this.el.object3D.position);
+                    moveToFinger(e.clientX, e.clientY);
                 });
 
-                // === 3. タッチ/クリック終了 ===
+                // --- 終了処理 ---
                 const endDrag = () => {
                     if (this.isDragging) {
                         this.isDragging = false;
@@ -142,29 +143,16 @@
                 window.addEventListener('touchend', endDrag);
                 window.addEventListener('mouseup', endDrag);
 
-                // === 4. 移動処理 (相対移動) ===
-                const updatePos = (cx, cy) => {
-                    // 移動量（画面全体に対する割合）を計算
-                    const deltaX = (cx - this.startScreenX) / window.innerWidth;
-                    const deltaY = (cy - this.startScreenY) / window.innerHeight;
-
-                    // スタート時の位置 + 移動量
-                    this.el.object3D.position.x = this.startObjectPosition.x + (deltaX * this.speed);
-                    // Y軸はマウスと3D空間で上下逆のため引く
-                    this.el.object3D.position.y = this.startObjectPosition.y - (deltaY * this.speed);
-                };
-
+                // --- 移動処理 ---
                 window.addEventListener('touchmove', (e) => {
                     if (!this.isDragging) return;
-                    // 画面スクロールを防ぐ
                     if(e.cancelable) e.preventDefault();
-                    
                     const touch = e.touches[0];
-                    updatePos(touch.clientX, touch.clientY);
+                    moveToFinger(touch.clientX, touch.clientY);
                 }, { passive: false });
                 
                 window.addEventListener('mousemove', (e) => {
-                    if(this.isDragging) updatePos(e.clientX, e.clientY);
+                    if(this.isDragging) moveToFinger(e.clientX, e.clientY);
                 });
             }
         });
@@ -183,7 +171,7 @@
                     document.getElementById('status-text').style.color = "red";
                     w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
                 } else {
-                    document.getElementById('status-text').innerText = "Drag Objects";
+                    document.getElementById('status-text').innerText = "Tap & Drag";
                     document.getElementById('status-text').style.color = "yellow";
                     w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = 0;
                 }
