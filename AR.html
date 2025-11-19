@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Final Reset</title>
+    <title>AR Final Center</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
@@ -37,20 +37,20 @@
             box-shadow: 0 0 25px #00C853; cursor: pointer;
         }
 
-        /* リセットボタン (画面下中央) */
+        /* リセットボタン */
         #reset-btn {
             position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
             z-index: 99999;
             padding: 15px 30px; 
-            background: rgba(0, 122, 255, 0.8); /* 青色 */
+            background: rgba(0, 122, 255, 0.8);
             color: white; border: 2px solid white; border-radius: 30px;
             font-size: 18px; font-weight: bold; cursor: pointer;
-            display: none; /* AR開始後に表示 */
+            display: none;
             box-shadow: 0 4px 10px rgba(0,0,0,0.5);
         }
         #reset-btn:active { transform: translateX(-50%) scale(0.95); }
 
-        /* 背景修正ボタン (右下・小さく) */
+        /* 背景修正ボタン (念のため) */
         #fix-bg-btn {
             position: fixed; bottom: 30px; right: 20px; z-index: 99999;
             padding: 8px; background: rgba(0,0,0,0.5); color: #ccc;
@@ -74,61 +74,49 @@
             
             setTimeout(() => {
                 document.getElementById('launcher').style.display = 'none';
-                document.getElementById('reset-btn').style.display = 'block'; // リセットボタン表示
+                document.getElementById('reset-btn').style.display = 'block';
                 document.getElementById('fix-bg-btn').style.display = 'block';
                 
                 document.querySelector('a-scene').play();
                 
-                // 起動直後にも一度リセットを試みる
+                // 起動直後に位置調整
                 setTimeout(resetPositions, 1000);
             }, 500);
         }
 
-        // --- 【新機能】位置リセット（目の前に呼び戻す） ---
+        // --- 位置リセット（目の前・中央寄りに配置） ---
         function resetPositions() {
             const camera = document.querySelector('[camera]');
             const acorn = document.getElementById('wrapper-acorn');
             const pain = document.getElementById('wrapper-pain');
 
-            // カメラの現在の位置と向きを取得
             const cameraPos = camera.object3D.position;
-            const direction = new THREE.Vector3();
-            camera.object3D.getWorldDirection(direction); // カメラが向いている方向(ベクトル)を取得
-            
-            // 向きベクトルを少し調整（Three.jsの仕様で反転が必要な場合があるため安全策で計算）
-            // ここでは「カメラの前方 2メートル」を計算します
-            // A-Frameのカメラは -Z 方向を向くのが基本
             const distance = 2.5; // 目の前2.5m
             
-            // 現在のカメラの回転情報(クォータニオン)を使って、前方ベクトルを作る
+            // 前方ベクトルの計算
             const forward = new THREE.Vector3(0, 0, -1);
             forward.applyQuaternion(camera.object3D.quaternion);
             forward.multiplyScalar(distance);
 
-            // 中心位置 = カメラ位置 + 前方ベクトル
             const centerPos = cameraPos.clone().add(forward);
 
-            // 左右に少しずらすためのベクトル（右方向）
+            // 左右ベクトル
             const right = new THREE.Vector3(1, 0, 0);
             right.applyQuaternion(camera.object3D.quaternion);
             
-            // ドングリ：中心から左へ0.8m
-            const acornPos = centerPos.clone().add(right.clone().multiplyScalar(-0.8));
-            // パイナップル：中心から右へ0.8m
-            const painPos = centerPos.clone().add(right.clone().multiplyScalar(0.8));
+            // ★ここを修正: 0.8 -> 0.5 (より内側に)
+            const offset = 0.5;
 
-            // 位置を適用
+            // ドングリ：中心から左へ0.5m
+            const acornPos = centerPos.clone().add(right.clone().multiplyScalar(-offset));
+            // パイナップル：中心から右へ0.5m
+            const painPos = centerPos.clone().add(right.clone().multiplyScalar(offset));
+
             acorn.object3D.position.copy(acornPos);
             pain.object3D.position.copy(painPos);
-            
-            // 高さをカメラと同じ高さ(または少し見下ろす位置)に強制補正
-            // スマホARだと高さがズレやすいので、Y座標は見やすい高さに固定しても良いですが、
-            // 今回は「視線の先」に忠実に配置します。
-            
-            alert("Reset Objects to Center!"); // 確認用アラート（不要なら消してください）
         }
 
-        // --- 背景透明化 (念のため残し) ---
+        // --- 背景透明化 ---
         function forceTransparent() {
             document.body.style.backgroundColor = 'transparent';
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
@@ -153,29 +141,10 @@
                 const updatePos = (cx, cy) => {
                     const sx = (cx / window.innerWidth) * 2 - 1;
                     const sy = -(cy / window.innerHeight) * 2 + 1;
-                    // カメラ基準で動かす計算だと複雑になるため、簡易的にワールド座標移動
-                    // ただしリセット後はカメラ正面にあるので、この移動ロジックで違和感なく動くはず
-                    this.el.object3D.position.x += sx * 0.1; // 差分移動にするとより直感的だが今回は絶対移動維持
-                    // ※簡易実装として、リセット後も「画面上の位置」に追従させます
-                    // ただしresetPositionsでワールド座標が変わるため、ドラッグロジックは
-                    // 「現在の位置からの相対移動」にするのがベストですが、
-                    // 既存コード(絶対座標指定)でもリセット後に触ればその位置に吸い付くので大丈夫です。
-                    this.el.object3D.position.x = (sx * 3.0) + this.el.object3D.position.x * 0.0; 
-                    // ↑修正: 絶対座標ロジックだとリセット後に飛んでしまうため、
-                    // 「リセット機能」を優先し、ドラッグは「タッチした位置に吸着」する簡易版にします。
-                    
-                    // シンプルなロジックに戻します（前回正常動作したもの）
+                    // 画面中央からの相対操作
                     this.el.object3D.position.x = sx * 5.0;
                     this.el.object3D.position.y = (sy * 5.0) + 1.6;
                 };
-                
-                // ドラッグロジック微修正: 
-                // リセットボタンを使うと「ワールド座標」が変わりますが、
-                // 以前のドラッグロジック（updatePos）は「画面中心からの絶対距離」で計算していました。
-                // そのため、リセット後にドラッグすると、一瞬で「初期位置計算」に戻って飛んでしまう可能性があります。
-                // これを防ぐには複雑な計算が必要ですが、
-                // 今回は「リセットボタンを押したら目の前に来る」→「ドラッグしたらその指の位置（画面座標）に移動する」
-                // という挙動で整合性が取れるため、前回のロジックのままで問題ありません。
 
                 window.addEventListener('touchmove', (e) => {
                     if (!this.isDragging) return;
@@ -236,12 +205,12 @@
         <a-entity light="type: ambient; intensity: 1.0; color: #fff;"></a-entity>
         <a-entity light="type: directional; intensity: 1.0; position: 1 2 1;"></a-entity>
 
-        <a-entity id="wrapper-acorn" position="-1.0 1.6 -3.0" drag-wrapper>
+        <a-entity id="wrapper-acorn" position="-0.5 1.6 -3.0" drag-wrapper>
             <a-box class="hit-box clickable" scale="1.5 1.5 1.5" material="color:red; opacity:0.01; transparent:true;"></a-box>
             <a-entity gltf-model="url(acorn.glb)" scale="12 12 12" position="0 -0.5 0"></a-entity>
         </a-entity>
 
-        <a-entity id="wrapper-pain" position="1.0 1.6 -3.0" drag-wrapper>
+        <a-entity id="wrapper-pain" position="0.5 1.6 -3.0" drag-wrapper>
             <a-box class="hit-box clickable" scale="1.5 1.5 1.5" material="color:red; opacity:0.01; transparent:true;"></a-box>
             <a-entity gltf-model="url(pain.glb)" scale="0.012 0.012 0.012" position="0 -0.5 0"></a-entity>
         </a-entity>
