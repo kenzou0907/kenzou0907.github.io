@@ -1,19 +1,21 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Absolute Position</title>
+    <title>AR Mobile Optimized</title>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
 
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/3.3.2/aframe/build/aframe-ar.js"></script>
 
     <style>
-        /* 基本設定 */
+        /* スマホ用: スクロール・ズーム・選択を完全無効化 */
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden; background-color: transparent !important;
-            touch-action: none;
+            touch-action: none; /* スワイプでの画面移動を禁止 */
+            user-select: none;  /* 長押しでの文字選択を禁止 */
+            -webkit-user-select: none;
         }
         .a-canvas {
             background-color: transparent !important;
@@ -23,9 +25,10 @@
             z-index: -1 !important; position: fixed !important;
             top: 0; left: 0; width: 100%; height: 100%;
             display: block !important;
+            object-fit: cover !important;
         }
 
-        /* UI */
+        /* UI: 起動画面 */
         #launcher {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 99999;
@@ -33,31 +36,39 @@
             justify-content: center; align-items: center;
         }
         #launch-btn {
-            padding: 20px 40px; font-size: 22px; font-weight: bold;
+            padding: 20px 50px; font-size: 20px; font-weight: bold;
             color: white; background: #00C853; border: none; border-radius: 50px;
             box-shadow: 0 0 25px #00C853; cursor: pointer;
+            -webkit-tap-highlight-color: transparent; /* タップ時の青い枠を消す */
         }
-        
+
+        /* UI: リセットボタン (押しやすい大きさに) */
         #reset-btn {
-            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
             z-index: 99999;
-            padding: 15px 40px; 
+            padding: 15px 50px; 
             background: rgba(0, 122, 255, 0.9);
-            color: white; border: 2px solid white; border-radius: 30px;
+            color: white; border: 2px solid white; border-radius: 40px;
             font-size: 18px; font-weight: bold; cursor: pointer;
             display: none;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            -webkit-tap-highlight-color: transparent;
         }
+        #reset-btn:active { transform: translateX(-50%) scale(0.95); }
+
+        /* UI: 背景修正ボタン */
         #fix-bg-btn {
-            position: fixed; bottom: 30px; right: 20px; z-index: 99999;
-            padding: 8px; background: rgba(0,0,0,0.5); color: #ccc;
-            border: 1px solid #888; border-radius: 5px; font-size: 10px;
+            position: fixed; bottom: 40px; right: 20px; z-index: 99999;
+            padding: 10px; background: rgba(0,0,0,0.5); color: #ccc;
+            border: 1px solid #888; border-radius: 8px; font-size: 12px;
             display: none;
         }
         
+        /* ステータス */
         #status-text {
-            position: fixed; top: 20px; width: 100%; text-align: center;
-            color: yellow; font-weight: bold; font-size: 20px;
-            text-shadow: 2px 2px 2px black; pointer-events: none; z-index: 9000;
+            position: fixed; top: 30px; width: 100%; text-align: center;
+            color: yellow; font-weight: bold; font-size: 22px;
+            text-shadow: 2px 2px 4px black; pointer-events: none; z-index: 9000;
         }
     </style>
 
@@ -83,7 +94,8 @@
             const centerPos = cameraPos.clone().add(forward);
             const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.object3D.quaternion);
             
-            const offset = 0.5;
+            // スマホ画面で見やすいように間隔を少し狭める (0.4m)
+            const offset = 0.4;
             acorn.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(-offset)));
             pain.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(offset)));
         }
@@ -93,76 +105,77 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
+        // --- 【モバイル最適化版】ドラッグ操作 ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isDragging = false;
+                
+                // ★スマホ画面に合わせた感度設定
+                // 縦画面(Portrait)の場合、横幅が狭いのでX感度を下げる
+                const isPortrait = window.innerHeight > window.innerWidth;
+                this.xFactor = isPortrait ? 2.5 : 4.0; 
+                this.yFactor = isPortrait ? 4.0 : 3.0;
 
-                // タップ位置を3D空間に変換する共通関数
-                this.screenToWorld = (cx, cy) => {
-                    const scene = this.el.sceneEl;
-                    const camera = scene.camera;
+                // ★指隠れ防止オフセット (指の少し上に表示する距離)
+                this.fingerOffsetY = 0.8; 
+                // ※ここを 0 にすると指の真下になります
 
-                    const mouse = new THREE.Vector2();
-                    mouse.x = (cx / window.innerWidth) * 2 - 1;
-                    mouse.y = -(cy / window.innerHeight) * 2 + 1;
+                // 共通移動関数
+                const moveToFinger = (cx, cy) => {
+                    // 画面座標 (-1 ~ 1)
+                    const sx = (cx / window.innerWidth) * 2 - 1;
+                    const sy = -(cy / window.innerHeight) * 2 + 1;
 
-                    const raycaster = new THREE.Raycaster();
-                    raycaster.setFromCamera(mouse, camera);
+                    // 移動適用
+                    this.el.object3D.position.x = sx * this.xFactor;
+                    
+                    // Y座標は「指の位置」+「オフセット」+「基本の高さ(1.6m)」
+                    // これで指の上にオブジェクトが見えるようになります
+                    this.el.object3D.position.y = (sy * this.yFactor) + 1.6 + this.fingerOffsetY;
+                };
 
-                // カメラ前方 2.5m の位置に置く
-                const dist = 2.5;
-                const pos = raycaster.ray.origin.clone()
-                    .add(raycaster.ray.direction.clone().multiplyScalar(dist));
-                return pos;
-            };
+                // --- タッチ開始 ---
+                this.el.addEventListener('touchstart', (e) => {
+                    if(e.cancelable) e.preventDefault();
+                    this.isDragging = true;
+                    
+                    // タップした瞬間のフィードバック（少し縮む）
+                    this.el.object3D.scale.set(0.9, 0.9, 0.9);
+                    
+                    const touch = e.touches[0];
+                    moveToFinger(touch.clientX, touch.clientY);
+                }, { passive: false });
 
-            // 位置更新処理
-            this.moveToFinger = (cx, cy) => {
-                const pos = this.screenToWorld(cx, cy);
-                this.el.object3D.position.copy(pos);
-            };
+                // --- マウスダウン (PC用) ---
+                this.el.addEventListener('mousedown', (e) => {
+                    this.isDragging = true;
+                    this.el.object3D.scale.set(0.9, 0.9, 0.9);
+                    moveToFinger(e.clientX, e.clientY);
+                });
 
-            // --- タッチ開始 ---
-            this.el.addEventListener('touchstart', (e) => {
-                if (e.cancelable) e.preventDefault();
-                this.isDragging = true;
-                this.el.object3D.scale.set(0.95, 0.95, 0.95);
-                const t = e.touches[0];
-                this.moveToFinger(t.clientX, t.clientY);
-            });
+                // --- 終了処理 ---
+                const endDrag = () => {
+                    if (this.isDragging) {
+                        this.isDragging = false;
+                        this.el.object3D.scale.set(1.0, 1.0, 1.0);
+                    }
+                };
+                window.addEventListener('touchend', endDrag);
+                window.addEventListener('mouseup', endDrag);
 
-            // --- クリック開始 ---
-            this.el.addEventListener('mousedown', (e) => {
-                this.isDragging = true;
-                this.el.object3D.scale.set(0.95, 0.95, 0.95);
-                this.moveToFinger(e.clientX, e.clientY);
-            });
-
-            // --- 終了 ---
-            const endDrag = () => {
-                if (this.isDragging) {
-                    this.isDragging = false;
-                    this.el.object3D.scale.set(1, 1, 1);
-                }
-            };
-            window.addEventListener('mouseup', endDrag);
-            window.addEventListener('touchend', endDrag);
-
-            // --- 移動処理 ---
-            window.addEventListener('touchmove', (e) => {
-                if (!this.isDragging) return;
-                if (e.cancelable) e.preventDefault();
-                const t = e.touches[0];
-                this.moveToFinger(t.clientX, t.clientY);
-            }, { passive: false });
-
-            window.addEventListener('mousemove', (e) => {
-                if (!this.isDragging) return;
-                this.moveToFinger(e.clientX, e.clientY);
-            });
-        }
-    });
-
+                // --- 移動処理 ---
+                window.addEventListener('touchmove', (e) => {
+                    if (!this.isDragging) return;
+                    if(e.cancelable) e.preventDefault(); // 画面揺れ防止
+                    const touch = e.touches[0];
+                    moveToFinger(touch.clientX, touch.clientY);
+                }, { passive: false });
+                
+                window.addEventListener('mousemove', (e) => {
+                    if(this.isDragging) moveToFinger(e.clientX, e.clientY);
+                });
+            }
+        });
 
         // --- 衝突判定 ---
         AFRAME.registerComponent('collision-check', {
@@ -175,7 +188,7 @@
 
                 if (dist < 1.3) { 
                     document.getElementById('status-text').innerText = "HIT !!";
-                    document.getElementById('status-text').style.color = "red";
+                    document.getElementById('status-text').style.color = "#FF3333";
                     w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
                 } else {
                     document.getElementById('status-text').innerText = "Tap & Drag";
@@ -205,12 +218,12 @@
         <a-entity light="type: ambient; intensity: 1.0; color: #fff;"></a-entity>
         <a-entity light="type: directional; intensity: 1.0; position: 1 2 1;"></a-entity>
 
-        <a-entity id="wrapper-acorn" position="-0.5 1.6 -3.0" drag-wrapper>
+        <a-entity id="wrapper-acorn" position="-0.4 1.6 -3.0" drag-wrapper>
             <a-sphere class="clickable" radius="1.2" material="opacity: 0.0; transparent: true"></a-sphere>
             <a-entity class="clickable" gltf-model="url(acorn.glb)" scale="12 12 12" position="0 -0.5 0"></a-entity>
         </a-entity>
 
-        <a-entity id="wrapper-pain" position="0.5 1.6 -3.0" drag-wrapper>
+        <a-entity id="wrapper-pain" position="0.4 1.6 -3.0" drag-wrapper>
             <a-sphere class="clickable" radius="1.2" material="opacity: 0.0; transparent: true"></a-sphere>
             <a-entity class="clickable" gltf-model="url(pain.glb)" scale="0.012 0.012 0.012" position="0 -0.5 0"></a-entity>
         </a-entity>
