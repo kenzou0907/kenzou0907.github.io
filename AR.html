@@ -93,69 +93,76 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 【修正版】絶対座標ドラッグ (指の位置 = オブジェクトの位置) ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isDragging = false;
-                
-                // 指の動きに対する追従係数（画面サイズと3D空間の比率）
-                // 3.0 〜 4.0 くらいが指の真下に来やすいです
-                this.factor = 3.0; 
 
-                // 共通の移動処理関数
-                const moveToFinger = (cx, cy) => {
-                    // 画面座標 (-1 ~ 1)
-                    const sx = (cx / window.innerWidth) * 2 - 1;
-                    const sy = -(cy / window.innerHeight) * 2 + 1;
+                // タップ位置を3D空間に変換する共通関数
+                this.screenToWorld = (cx, cy) => {
+                    const scene = this.el.sceneEl;
+                    const camera = scene.camera;
 
-                    // 絶対座標をセット
-                    this.el.object3D.position.x = sx * this.factor;
-                    
-                    // Y座標（高さ）: 指で隠れないよう少し上(+1.6)に表示
-                    this.el.object3D.position.y = sy * this.factor;
-                };
+                    const mouse = new THREE.Vector2();
+                    mouse.x = (cx / window.innerWidth) * 2 - 1;
+                    mouse.y = -(cy / window.innerHeight) * 2 + 1;
 
-                // --- タッチ開始 ---
-                this.el.addEventListener('touchstart', (e) => {
-                    if(e.cancelable) e.preventDefault();
-                    this.isDragging = true;
-                    this.el.object3D.scale.set(0.95, 0.95, 0.95);
-                    
-                    // 触れた瞬間にその場所へ移動させる
-                    const touch = e.touches[0];
-                    moveToFinger(touch.clientX, touch.clientY);
-                });
+                    const raycaster = new THREE.Raycaster();
+                    raycaster.setFromCamera(mouse, camera);
 
-                // --- マウスダウン ---
-                this.el.addEventListener('mousedown', (e) => {
-                    this.isDragging = true;
-                    this.el.object3D.scale.set(0.95, 0.95, 0.95);
-                    moveToFinger(e.clientX, e.clientY);
-                });
+                // カメラ前方 2.5m の位置に置く
+                const dist = 2.5;
+                const pos = raycaster.ray.origin.clone()
+                    .add(raycaster.ray.direction.clone().multiplyScalar(dist));
+                return pos;
+            };
 
-                // --- 終了処理 ---
-                const endDrag = () => {
-                    if (this.isDragging) {
-                        this.isDragging = false;
-                        this.el.object3D.scale.set(1.0, 1.0, 1.0);
-                    }
-                };
-                window.addEventListener('touchend', endDrag);
-                window.addEventListener('mouseup', endDrag);
+            // 位置更新処理
+            this.moveToFinger = (cx, cy) => {
+                const pos = this.screenToWorld(cx, cy);
+                this.el.object3D.position.copy(pos);
+            };
 
-                // --- 移動処理 ---
-                window.addEventListener('touchmove', (e) => {
-                    if (!this.isDragging) return;
-                    if(e.cancelable) e.preventDefault();
-                    const touch = e.touches[0];
-                    moveToFinger(touch.clientX, touch.clientY);
-                }, { passive: false });
-                
-                window.addEventListener('mousemove', (e) => {
-                    if(this.isDragging) moveToFinger(e.clientX, e.clientY);
-                });
-            }
-        });
+            // --- タッチ開始 ---
+            this.el.addEventListener('touchstart', (e) => {
+                if (e.cancelable) e.preventDefault();
+                this.isDragging = true;
+                this.el.object3D.scale.set(0.95, 0.95, 0.95);
+                const t = e.touches[0];
+                this.moveToFinger(t.clientX, t.clientY);
+            });
+
+            // --- クリック開始 ---
+            this.el.addEventListener('mousedown', (e) => {
+                this.isDragging = true;
+                this.el.object3D.scale.set(0.95, 0.95, 0.95);
+                this.moveToFinger(e.clientX, e.clientY);
+            });
+
+            // --- 終了 ---
+            const endDrag = () => {
+                if (this.isDragging) {
+                    this.isDragging = false;
+                    this.el.object3D.scale.set(1, 1, 1);
+                }
+            };
+            window.addEventListener('mouseup', endDrag);
+            window.addEventListener('touchend', endDrag);
+
+            // --- 移動処理 ---
+            window.addEventListener('touchmove', (e) => {
+                if (!this.isDragging) return;
+                if (e.cancelable) e.preventDefault();
+                const t = e.touches[0];
+                this.moveToFinger(t.clientX, t.clientY);
+            }, { passive: false });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!this.isDragging) return;
+                this.moveToFinger(e.clientX, e.clientY);
+            });
+        }
+    });
+
 
         // --- 衝突判定 ---
         AFRAME.registerComponent('collision-check', {
