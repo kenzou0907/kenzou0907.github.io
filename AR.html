@@ -100,7 +100,7 @@
                 
                 // 指の動きに対する追従係数（画面サイズと3D空間の比率）
                 // 3.0 〜 4.0 くらいが指の真下に来やすいです
-                this.factor = 0; 
+                this.factor = 1; 
 
                 // 共通の移動処理関数
                 const moveToFinger = (cx, cy) => {
@@ -112,7 +112,7 @@
                     this.el.object3D.position.x = sx * this.factor;
                     
                     // Y座標（高さ）: 指で隠れないよう少し上(+1.6)に表示
-                    this.el.object3D.position.y = (sy * this.factor) + 1.6;
+                    this.el.object3D.position.y = sy * this.factor;
                 };
 
                 // --- タッチ開始 ---
