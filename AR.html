@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Mobile Optimized (Zoom & Drag)</title>
+    <title>AR Mobile Optimized (Fixed)</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
 
@@ -99,7 +99,7 @@
             acorn.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(-offset)));
             pain.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(offset)));
 
-            // スケールのリセット (初期値に戻す)
+            // スケールのリセット
             acorn.object3D.scale.set(1, 1, 1);
             pain.object3D.scale.set(1, 1, 1);
         }
@@ -109,14 +109,13 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 【追加】ピンチイン・ピンチアウト (拡大縮小) ---
+        // --- 修正版: ピンチイン・ピンチアウト (拡大縮小) ---
         AFRAME.registerComponent('pinch-scale', {
             init: function() {
                 this.initialDistance = 0;
                 this.initialScale = 1;
                 this.isPinching = false;
 
-                // 2点間の距離を計算するヘルパー関数
                 const getDistance = (t1, t2) => {
                     const dx = t1.clientX - t2.clientX;
                     const dy = t1.clientY - t2.clientY;
@@ -126,8 +125,16 @@
                 this.el.addEventListener('touchstart', (e) => {
                     if (e.touches.length === 2) {
                         this.isPinching = true;
-                        this.initialDistance = getDistance(e.touches[0], e.touches[1]);
-                        this.initialScale = this.el.object3D.scale.x; // 現在のスケールを取得
+                        const dist = getDistance(e.touches[0], e.touches[1]);
+                        
+                        // 距離が極端に近い(0に近い)場合は無視（エラー防止）
+                        if (dist < 10) { 
+                            this.isPinching = false; 
+                            return; 
+                        }
+
+                        this.initialDistance = dist;
+                        this.initialScale = this.el.object3D.scale.x;
                     }
                 });
 
@@ -135,23 +142,25 @@
                     if (this.isPinching && e.touches.length === 2) {
                         const newDistance = getDistance(e.touches[0], e.touches[1]);
                         
-                        // 距離の変化率を計算
-                        // 感度を調整したい場合はこのあたりをいじります
+                        // 安全装置: ゼロ除算や極小距離の防止
+                        if (newDistance < 10 || this.initialDistance < 10) return;
+
                         const scaleFactor = newDistance / this.initialDistance; 
 
-                        // 新しいサイズ
+                        // 安全装置: 計算結果が不正なら何もしない
+                        if (!isFinite(scaleFactor) || isNaN(scaleFactor)) return;
+
                         let newScale = this.initialScale * scaleFactor;
 
-                        // 最小・最大サイズの制限 (0.1倍 ～ 10倍)
+                        // 制限 (0.1倍 ～ 5倍) - 極端に大きくなると画面外に消えるため上限を下げる
                         if (newScale < 0.1) newScale = 0.1;
-                        if (newScale > 10.0) newScale = 10.0;
+                        if (newScale > 5.0) newScale = 5.0;
 
                         this.el.object3D.scale.set(newScale, newScale, newScale);
                     }
                 });
 
                 window.addEventListener('touchend', (e) => {
-                    // 指が離れたらピンチ終了
                     if (e.touches.length < 2) {
                         this.isPinching = false;
                     }
@@ -159,7 +168,7 @@
             }
         });
 
-        // --- ドラッグ操作 (修正版) ---
+        // --- 修正版: ドラッグ操作 ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isDragging = false;
@@ -169,22 +178,24 @@
                 this.fingerOffsetY = 0.8; 
 
                 const moveToFinger = (cx, cy) => {
+                    // 座標が不正でないかチェック
+                    if (isNaN(cx) || isNaN(cy)) return;
+
                     const sx = (cx / window.innerWidth) * 2 - 1;
                     const sy = -(cy / window.innerHeight) * 2 + 1;
+                    
+                    // 値が極端に飛んでいないか簡易チェック（念のため）
+                    if (Math.abs(sx) > 10 || Math.abs(sy) > 10) return;
+
                     this.el.object3D.position.x = sx * this.xFactor;
                     this.el.object3D.position.y = (sy * this.yFactor) + 1.6 + this.fingerOffsetY;
                 };
 
                 this.el.addEventListener('touchstart', (e) => {
-                    // 2本指(ピンチ中)の場合はドラッグを開始しない
+                    // 2本指以上ならドラッグを開始しない
                     if (e.touches.length > 1) return;
-
                     if(e.cancelable) e.preventDefault();
                     this.isDragging = true;
-                    
-                    // ★修正: タップ時の縮小エフェクトを削除 (拡大縮小機能と競合するため)
-                    // this.el.object3D.scale.set(0.9, 0.9, 0.9); 
-                    
                     const touch = e.touches[0];
                     moveToFinger(touch.clientX, touch.clientY);
                 }, { passive: false });
@@ -198,20 +209,21 @@
                 const endDrag = () => {
                     if (this.isDragging) {
                         this.isDragging = false;
-                        // ★修正: リセットも削除
                     }
                 };
                 window.addEventListener('touchend', endDrag);
                 window.addEventListener('mouseup', endDrag);
 
                 window.addEventListener('touchmove', (e) => {
-                    // 2本指の場合はドラッグしない
+                    // 2本指以上検知したら即座にドラッグ停止＆リターン
                     if (e.touches.length > 1) {
                         this.isDragging = false;
                         return;
                     }
+
                     if (!this.isDragging) return;
-                    if(e.cancelable) e.preventDefault();
+                    if (e.cancelable) e.preventDefault();
+                    
                     const touch = e.touches[0];
                     moveToFinger(touch.clientX, touch.clientY);
                 }, { passive: false });
