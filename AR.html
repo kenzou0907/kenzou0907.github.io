@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Mobile Optimized (Zoom Fixed)</title>
+    <title>AR Mobile Optimized (Smooth Drag)</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
 
@@ -99,10 +99,13 @@
             acorn.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(-offset)));
             pain.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(offset)));
 
-            // スケールのリセット（重要：HTMLで指定した初期値に戻す）
-            // acornは12, painは0.012
-            acorn.object3D.scale.set(12, 12, 12); // acornの初期スケール
-            pain.object3D.scale.set(0.012, 0.012, 0.012); // painの初期スケール
+            // スケールのリセット (中のモデルのスケールを戻す)
+            acorn.querySelector('[gltf-model]').object3D.scale.set(12, 12, 12);
+            pain.querySelector('[gltf-model]').object3D.scale.set(0.012, 0.012, 0.012);
+            
+            // ラッパーのスケールも1に戻す
+            acorn.object3D.scale.set(1, 1, 1);
+            pain.object3D.scale.set(1, 1, 1);
         }
 
         function forceTransparent() {
@@ -110,11 +113,11 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 修正完了版: ピンチ拡大縮小 ---
+        // --- ピンチ拡大縮小 (Wrapper Scaling) ---
         AFRAME.registerComponent('pinch-scale', {
             init: function() {
                 this.initialDistance = 0;
-                this.startScale = new THREE.Vector3(); // 開始時のスケールをベクトルで保存
+                this.startScale = new THREE.Vector3(1, 1, 1);
                 this.isPinching = false;
 
                 const getDistance = (t1, t2) => {
@@ -127,11 +130,10 @@
                     if (e.touches.length === 2) {
                         this.isPinching = true;
                         const dist = getDistance(e.touches[0], e.touches[1]);
-                        
-                        if (dist < 10) return; // 誤作動防止
+                        if (dist < 10) return;
 
                         this.initialDistance = dist;
-                        // 現在の「3次元スケール(x,y,z)」をそのままコピーして保存
+                        // 現在のスケールを保存
                         this.startScale.copy(this.el.object3D.scale);
                     }
                 });
@@ -139,16 +141,12 @@
                 window.addEventListener('touchmove', (e) => {
                     if (this.isPinching && e.touches.length === 2) {
                         const newDistance = getDistance(e.touches[0], e.touches[1]);
-                        
                         if (newDistance < 10 || this.initialDistance < 10) return;
 
-                        // 倍率を計算 (例: 1.2倍, 0.8倍など)
                         const scaleMultiplier = newDistance / this.initialDistance;
-
-                        // 数値チェック
                         if (!isFinite(scaleMultiplier) || isNaN(scaleMultiplier)) return;
 
-                        // 元のサイズに対して倍率をかける (これが重要！)
+                        // 元のスケールに対する倍率適用
                         this.el.object3D.scale.x = this.startScale.x * scaleMultiplier;
                         this.el.object3D.scale.y = this.startScale.y * scaleMultiplier;
                         this.el.object3D.scale.z = this.startScale.z * scaleMultiplier;
@@ -163,61 +161,83 @@
             }
         });
 
-        // --- ドラッグ操作 ---
+        // --- ★修正版: 相対移動ドラッグ (Relative Drag) ---
+        // タップした場所へ瞬間移動せず、指を動かした分だけ移動する
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isDragging = false;
+                
+                // 前回のタッチ座標
+                this.lastX = 0;
+                this.lastY = 0;
+
+                // 移動感度 (画面ピクセルあたりの移動量)
+                // 数値を大きくすると速く動き、小さくするとゆっくり動く
                 const isPortrait = window.innerHeight > window.innerWidth;
-                this.xFactor = isPortrait ? 2.5 : 4.0; 
-                this.yFactor = isPortrait ? 4.0 : 3.0;
-                this.fingerOffsetY = 0.8; 
-
-                const moveToFinger = (cx, cy) => {
-                    if (isNaN(cx) || isNaN(cy)) return;
-                    const sx = (cx / window.innerWidth) * 2 - 1;
-                    const sy = -(cy / window.innerHeight) * 2 + 1;
-                    if (Math.abs(sx) > 10 || Math.abs(sy) > 10) return;
-
-                    this.el.object3D.position.x = sx * this.xFactor;
-                    this.el.object3D.position.y = (sy * this.yFactor) + 1.6 + this.fingerOffsetY;
-                };
+                this.speedX = isPortrait ? 0.008 : 0.005;
+                this.speedY = isPortrait ? 0.008 : 0.005;
 
                 this.el.addEventListener('touchstart', (e) => {
-                    if (e.touches.length > 1) return; // 2本指は無視
-                    if(e.cancelable) e.preventDefault();
+                    if (e.touches.length > 1) return; // ピンチ中は無視
+                    if (e.cancelable) e.preventDefault();
+                    
                     this.isDragging = true;
-                    const touch = e.touches[0];
-                    moveToFinger(touch.clientX, touch.clientY);
+                    // タッチ開始地点を記録
+                    this.lastX = e.touches[0].clientX;
+                    this.lastY = e.touches[0].clientY;
                 }, { passive: false });
 
                 // PC用
                 this.el.addEventListener('mousedown', (e) => {
                     this.isDragging = true;
-                    moveToFinger(e.clientX, e.clientY);
+                    this.lastX = e.clientX;
+                    this.lastY = e.clientY;
                 });
 
                 const endDrag = () => {
-                    if (this.isDragging) {
-                        this.isDragging = false;
-                    }
+                    this.isDragging = false;
                 };
                 window.addEventListener('touchend', endDrag);
                 window.addEventListener('mouseup', endDrag);
 
+                // タッチ移動処理
                 window.addEventListener('touchmove', (e) => {
-                    if (e.touches.length > 1) { // 2本指検知でドラッグ強制終了
-                        this.isDragging = false;
-                        return;
+                    if (e.touches.length > 1) { 
+                        this.isDragging = false; return; 
                     }
                     if (!this.isDragging) return;
                     if (e.cancelable) e.preventDefault();
-                    
+
                     const touch = e.touches[0];
-                    moveToFinger(touch.clientX, touch.clientY);
+                    const curX = touch.clientX;
+                    const curY = touch.clientY;
+
+                    // 差分を計算 (今の場所 - さっきの場所)
+                    const deltaX = curX - this.lastX;
+                    const deltaY = curY - this.lastY;
+
+                    // オブジェクトの位置に差分を加算
+                    this.el.object3D.position.x += deltaX * this.speedX;
+                    this.el.object3D.position.y -= deltaY * this.speedY; // Yは画面と逆方向(上がプラス)なので引く
+
+                    // 座標更新
+                    this.lastX = curX;
+                    this.lastY = curY;
                 }, { passive: false });
                 
+                // マウス移動処理
                 window.addEventListener('mousemove', (e) => {
-                    if(this.isDragging) moveToFinger(e.clientX, e.clientY);
+                    if (!this.isDragging) return;
+                    const curX = e.clientX;
+                    const curY = e.clientY;
+                    const deltaX = curX - this.lastX;
+                    const deltaY = curY - this.lastY;
+
+                    this.el.object3D.position.x += deltaX * this.speedX;
+                    this.el.object3D.position.y -= deltaY * this.speedY;
+
+                    this.lastX = curX;
+                    this.lastY = curY;
                 });
             }
         });
@@ -234,11 +254,11 @@
                 if (dist < 1.3) { 
                     document.getElementById('status-text').innerText = "HIT !!";
                     document.getElementById('status-text').style.color = "#FF3333";
-                    w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
+                    w2.querySelector('[gltf-model]').object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
                 } else {
                     document.getElementById('status-text').innerText = "Drag & Pinch";
                     document.getElementById('status-text').style.color = "yellow";
-                    w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = 0;
+                    w2.querySelector('[gltf-model]').object3D.rotation.z = 0;
                 }
             }
         });
