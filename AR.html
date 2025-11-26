@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Simple Drag & Scale</title>
+    <title>AR Reliable Touch</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
 
@@ -9,7 +9,7 @@
     <script src="https://raw.githack.com/AR-js-org/AR.js/3.3.2/aframe/build/aframe-ar.js"></script>
 
     <style>
-        /* 基本設定：画面揺れや選択を禁止 */
+        /* 画面全体の固定 */
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden; background-color: transparent !important;
@@ -18,14 +18,15 @@
         .a-canvas {
             background-color: transparent !important;
             display: block !important;
+            z-index: 10 !important; /* キャンバスを確実に手前に */
         }
         #arjs-video {
-            z-index: -1 !important; position: fixed !important;
+            z-index: 1 !important; position: fixed !important;
             top: 0; left: 0; width: 100%; height: 100%;
             display: block !important; object-fit: cover !important;
         }
 
-        /* UIボタン類 */
+        /* UI類 */
         #launcher {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 99999;
@@ -54,7 +55,7 @@
     </style>
 
     <script>
-        // カメラ起動処理
+        // カメラ起動
         function startCamera() {
             document.getElementById('launch-btn').innerText = "Starting...";
             setTimeout(() => {
@@ -66,13 +67,13 @@
             }, 500);
         }
 
-        // 位置とサイズのリセット
+        // リセット処理
         function resetPositions() {
             const camera = document.querySelector('[camera]');
             const acorn = document.getElementById('wrapper-acorn');
             const pain = document.getElementById('wrapper-pain');
             
-            // カメラの前方に配置しなおす計算
+            // カメラ前方に再配置
             const cameraPos = camera.object3D.position;
             const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.object3D.quaternion).multiplyScalar(2.5);
             const centerPos = cameraPos.clone().add(forward);
@@ -82,11 +83,10 @@
             acorn.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(-offset)));
             pain.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(offset)));
 
-            // スケールを初期値に戻す
+            // スケールリセット
             acorn.object3D.scale.set(1, 1, 1);
             pain.object3D.scale.set(1, 1, 1);
             
-            // 内部状態のリセット
             if(acorn.components['drag-wrapper']) acorn.components['drag-wrapper'].reset();
             if(pain.components['drag-wrapper']) pain.components['drag-wrapper'].reset();
         }
@@ -96,30 +96,35 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 修正版: 1本指移動 / 2本指拡縮 (完全分離) ---
+        // --- 確実な判定を行う改良版コンポーネント ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
-                this.isActive = false; // このオブジェクトを操作中か
-                this.mode = 'none';    // 現在のモード: 'move' or 'scale' or 'none'
+                this.isActive = false;
+                this.mode = 'none'; // 'move' or 'scale'
                 
+                // Raycaster用（当たり判定ビーム）
+                this.raycaster = new THREE.Raycaster();
+                this.mouse = new THREE.Vector2();
+                this.camera = null;
+
                 // スケール計算用
                 this.startDistance = 0;
                 this.baseScale = new THREE.Vector3();
 
-                // 画面座標変換係数
+                // 座標変換用
                 const isPortrait = window.innerHeight > window.innerWidth;
                 this.xFactor = isPortrait ? 2.5 : 4.0; 
                 this.yFactor = isPortrait ? 4.0 : 3.0;
                 this.fingerOffsetY = 0.8; 
 
-                // 2点間の距離を測る
+                // 距離計算関数
                 const getDistance = (t1, t2) => {
                     const dx = t1.pageX - t2.pageX;
                     const dy = t1.pageY - t2.pageY;
                     return Math.sqrt(dx * dx + dy * dy);
                 };
 
-                // 指の位置へ移動させる処理
+                // 移動関数
                 const moveToFinger = (cx, cy) => {
                     const sx = (cx / window.innerWidth) * 2 - 1;
                     const sy = -(cy / window.innerHeight) * 2 + 1;
@@ -127,75 +132,83 @@
                     this.el.object3D.position.y = (sy * this.yFactor) + 1.6 + this.fingerOffsetY;
                 };
 
-                // 外部からリセットするための関数
                 this.reset = () => {
                     this.isActive = false;
                     this.mode = 'none';
                 };
 
-                // --- 1. タッチ開始 (オブジェクトに触れたらアクティブ化) ---
-                this.el.addEventListener('touchstart', (e) => {
-                    if (e.cancelable) e.preventDefault();
-                    this.isActive = true;
-
-                    // 1本指で開始した場合、即座に移動モードへ
-                    if (e.touches.length === 1) {
-                        this.mode = 'move';
-                        const t = e.touches[0];
-                        moveToFinger(t.clientX, t.clientY);
+                // --- 1. タッチ開始（ここで当たり判定を行う） ---
+                window.addEventListener('touchstart', (e) => {
+                    // まだカメラ準備できてなければ取得
+                    if (!this.camera) {
+                        this.camera = this.el.sceneEl.camera;
+                        if (!this.camera) return;
                     }
-                    // 2本指で開始した場合（稀）、スケールモード準備
-                    else if (e.touches.length === 2) {
-                        this.mode = 'scale';
-                        this.startDistance = getDistance(e.touches[0], e.touches[1]);
-                        this.baseScale.copy(this.el.object3D.scale);
+
+                    // 1本目の指の座標を取得
+                    const touch = e.touches[0];
+                    this.mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+                    this.mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+
+                    // ビームを飛ばす
+                    this.raycaster.setFromCamera(this.mouse, this.camera);
+                    
+                    // 自分自身(this.el)の子要素(球体やモデル)に当たったか？
+                    // recursive: true で子要素までチェック
+                    const intersects = this.raycaster.intersectObject(this.el.object3D, true);
+
+                    if (intersects.length > 0) {
+                        // 当たった！
+                        if (e.cancelable) e.preventDefault();
+                        this.isActive = true;
+
+                        // 1本指なら即移動モード
+                        if (e.touches.length === 1) {
+                            this.mode = 'move';
+                            moveToFinger(touch.clientX, touch.clientY);
+                        }
+                        // 2本指スタートなら拡大モード準備
+                        else if (e.touches.length === 2) {
+                            this.mode = 'scale';
+                            this.startDistance = getDistance(e.touches[0], e.touches[1]);
+                            this.baseScale.copy(this.el.object3D.scale);
+                        }
                     }
                 }, { passive: false });
 
-                // --- 2. タッチ移動 (画面全体で監視) ---
-                // ※オブジェクトから指がはみ出ても追従させるため window を使用
+                // --- 2. タッチ移動 ---
                 window.addEventListener('touchmove', (e) => {
-                    if (!this.isActive) return; // このオブジェクトのアクティブ中でなければ何もしない
+                    if (!this.isActive) return; // 自分が触られてなければ無視
                     if (e.cancelable) e.preventDefault();
 
                     const touches = e.touches;
 
-                    // ★★★ ここで分岐: 2本指なら「絶対」に移動させない ★★★
-
-                    // 【ケースA: 2本指 = 拡大縮小】
+                    // --- 2本指：拡大縮小（移動禁止） ---
                     if (touches.length === 2) {
-                        // モード切り替え直後の初期化
                         if (this.mode !== 'scale') {
                             this.mode = 'scale';
                             this.startDistance = getDistance(touches[0], touches[1]);
                             this.baseScale.copy(this.el.object3D.scale);
-                            return; // 初回は計算せず終了
+                            return; 
                         }
 
-                        // 距離計算と拡縮適用
                         const currentDist = getDistance(touches[0], touches[1]);
                         if (this.startDistance === 0) return;
 
                         const ratio = currentDist / this.startDistance;
                         let newScale = this.baseScale.x * ratio;
 
-                        // 制限 (0.1倍 ～ 5.0倍)
+                        // サイズ制限
                         if (newScale < 0.1) newScale = 0.1;
                         if (newScale > 5.0) newScale = 5.0;
 
                         this.el.object3D.scale.set(newScale, newScale, newScale);
                     }
                     
-                    // 【ケースB: 1本指 = 移動】
+                    // --- 1本指：移動 ---
                     else if (touches.length === 1) {
-                        // もし直前まで2本指(scale)だった場合、急に座標を更新すると飛ぶので
-                        // 一旦同期をとる、あるいはスムーズに移行する
-                        if (this.mode === 'scale') {
-                            this.mode = 'move';
-                            // 2本指から1本指になった瞬間は、位置更新を1回スキップして
-                            // 「位置飛び」を防ぐのが安全ですが、今回は直感性を優先して即座に追従させます。
-                        }
-                        
+                        // スケールモードから戻った直後の位置飛び防止も可能ですが、
+                        // ここでは直感的に追従するようにしています
                         this.mode = 'move';
                         const t = touches[0];
                         moveToFinger(t.clientX, t.clientY);
@@ -205,17 +218,15 @@
                 // --- 3. タッチ終了 ---
                 const endAction = (e) => {
                     if (!this.isActive) return;
-                    
                     // 指が全部離れたら終了
                     if (e.touches.length === 0) {
                         this.isActive = false;
                         this.mode = 'none';
                     }
-                    // まだ指が残っている場合(2本->1本など)は touchmove 側でモードが変わるのを待つ
                 };
 
                 window.addEventListener('touchend', endAction);
-                window.addEventListener('touchcancel', endAction); // キャンセル時も終了
+                window.addEventListener('touchcancel', endAction);
             }
         });
 
@@ -252,8 +263,6 @@
         arjs="sourceType: webcam; debugUIEnabled: false;"
         renderer="logarithmicDepthBuffer: true; colorManagement: true; alpha: true;"
         vr-mode-ui="enabled: false"
-        cursor="rayOrigin: mouse" 
-        raycaster="objects: .clickable" 
         collision-check>
 
         <a-entity camera position="0 1.6 0"></a-entity>
@@ -261,13 +270,13 @@
         <a-entity light="type: directional; intensity: 1.0; position: 1 2 1;"></a-entity>
 
         <a-entity id="wrapper-acorn" position="-0.4 1.6 -3.0" drag-wrapper>
-            <a-sphere class="clickable" radius="1.2" material="opacity: 0.0; transparent: true"></a-sphere>
-            <a-entity class="clickable" gltf-model="url(acorn.glb)" scale="12 12 12" position="0 -0.5 0"></a-entity>
+            <a-sphere radius="1.2" material="opacity: 0.0; transparent: true"></a-sphere>
+            <a-entity gltf-model="url(acorn.glb)" scale="12 12 12" position="0 -0.5 0"></a-entity>
         </a-entity>
 
         <a-entity id="wrapper-pain" position="0.4 1.6 -3.0" drag-wrapper>
-            <a-sphere class="clickable" radius="1.2" material="opacity: 0.0; transparent: true"></a-sphere>
-            <a-entity class="clickable" gltf-model="url(pain.glb)" scale="0.012 0.012 0.012" position="0 -0.5 0"></a-entity>
+            <a-sphere radius="1.2" material="opacity: 0.0; transparent: true"></a-sphere>
+            <a-entity gltf-model="url(pain.glb)" scale="0.012 0.012 0.012" position="0 -0.5 0"></a-entity>
         </a-entity>
 
     </a-scene>
