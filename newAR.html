@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Markerless AR with Move & Scale</title>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="gestures.js"></script>
+  </head>
+
+  <body>
+    <a-scene 
+      webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: #overlay" 
+      renderer="colorManagement: true;" 
+      cursor="rayOrigin: mouse; fuse: false" 
+      raycaster="objects: .clickable"
+      gesture-detector>
+
+      <a-light type="directional" intensity="1" position="-1 1 2"></a-light>
+      <a-light type="ambient" intensity="0.5"></a-light>
+
+      <a-entity 
+        id="model-acorn"
+        gltf-model="./acorn.glb" 
+        position="-0.5 0 -1" 
+        scale="1 1 1"
+        class="clickable"
+        gesture-handler>
+      </a-entity>
+
+      <a-entity 
+        id="model-pain"
+        gltf-model="./pain.glb" 
+        position="0.5 0 -1" 
+        scale="1 1 1"
+        class="clickable"
+        gesture-handler>
+      </a-entity>
+
+      <a-entity camera position="0 1.6 0" look-controls="enabled: false"></a-entity>
+      
+    </a-scene>
+    
+    <div id="overlay"></div>
+  </body>
+</html>
