@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Mobile Optimized (Fixed Drag & Zoom)</title>
+    <title>AR Mobile Optimized (Independent Control)</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
 
@@ -115,12 +115,13 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- ★修正版: 拡大縮小 (Pinch Scale) ---
+        // --- ★修正版: 個別拡大縮小 (Independent Pinch Scale) ---
         AFRAME.registerComponent('pinch-scale', {
             init: function() {
                 this.initialDistance = 0;
                 this.startScale = new THREE.Vector3(1, 1, 1);
                 this.isPinching = false;
+                this.isActive = false; // ★このオブジェクトが触られているかどうかのフラグ
 
                 const getDistance = (t1, t2) => {
                     const dx = t1.clientX - t2.clientX;
@@ -128,8 +129,16 @@
                     return Math.sqrt(dx * dx + dy * dy);
                 };
 
-                // ピンチ開始
+                // このオブジェクトにタッチが開始された時だけ「アクティブ」にする
+                this.el.addEventListener('touchstart', (e) => {
+                    this.isActive = true;
+                });
+
+                // ピンチ処理（画面全体で監視するが、isActiveでフィルタリングする）
                 window.addEventListener('touchmove', (e) => {
+                    // ★自分がアクティブでなければ何もしない（他のオブジェクトへの干渉防止）
+                    if (!this.isActive) return;
+
                     if (e.touches.length === 2) {
                         const dist = getDistance(e.touches[0], e.touches[1]);
                         
@@ -141,47 +150,44 @@
                             return; 
                         }
 
-                        // 距離が近すぎる場合は無視（エラー防止）
                         if (dist < 10 || this.initialDistance < 10) return;
 
                         const scaleMultiplier = dist / this.initialDistance;
 
-                        // NaNチェック
                         if (!isFinite(scaleMultiplier)) return;
 
-                        // 新しいスケールを適用
                         const newX = this.startScale.x * scaleMultiplier;
                         const newY = this.startScale.y * scaleMultiplier;
                         const newZ = this.startScale.z * scaleMultiplier;
 
-                        // 極端なサイズにならないよう制限 (0.1倍 ～ 5倍)
+                        // 制限 (0.1倍 ～ 20倍)
                         if (newX > 0.1 && newX < 20) { 
                             this.el.object3D.scale.set(newX, newY, newZ);
                         }
                     }
                 });
 
+                // 指が離れたらアクティブ状態を解除
                 window.addEventListener('touchend', (e) => {
                     if (e.touches.length < 2) {
                         this.isPinching = false;
+                    }
+                    if (e.touches.length === 0) {
+                        this.isActive = false; // 全部の指が離れたらリセット
                     }
                 });
             }
         });
 
-        // --- ★修正版: スライド移動 (Slide Drag) ---
+        // --- スライド移動 (Slide Drag) ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isDragging = false;
                 this.lastX = 0;
                 this.lastY = 0;
-
-                // ★ここが重要: 感度を大幅に下げました
-                // 数値を小さくするほど、移動がゆっくりになります
                 this.speed = 0.003; 
 
                 this.el.addEventListener('touchstart', (e) => {
-                    // 2本指(ピンチ)のときはドラッグしない
                     if (e.touches.length > 1) return;
                     if (e.cancelable) e.preventDefault();
                     
@@ -194,31 +200,24 @@
                 window.addEventListener('touchend', endDrag);
 
                 window.addEventListener('touchmove', (e) => {
-                    // ピンチ操作中はドラッグ処理を中断
                     if (e.touches.length > 1) { 
                         this.isDragging = false; 
                         return; 
                     }
                     if (!this.isDragging) return;
-                    // デフォルトのスクロールなどを防ぐ
                     if (e.cancelable) e.preventDefault();
 
                     const touch = e.touches[0];
                     const curX = touch.clientX;
                     const curY = touch.clientY;
-
-                    // 移動量を計算
                     const deltaX = curX - this.lastX;
                     const deltaY = curY - this.lastY;
 
-                    // ★安全装置: 異常に大きな移動（100px以上）は無視して座標飛びを防ぐ
                     if (Math.abs(deltaX) < 100 && Math.abs(deltaY) < 100) {
                         this.el.object3D.position.x += deltaX * this.speed;
-                        // Y軸は画面操作と逆になるので引く
                         this.el.object3D.position.y -= deltaY * this.speed;
                     }
 
-                    // 次の計算のために現在位置を保存
                     this.lastX = curX;
                     this.lastY = curY;
                 }, { passive: false });
