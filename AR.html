@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Mobile Optimized with Scale (Fixed)</title>
+    <title>AR Simple Drag & Scale</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
 
@@ -9,13 +9,11 @@
     <script src="https://raw.githack.com/AR-js-org/AR.js/3.3.2/aframe/build/aframe-ar.js"></script>
 
     <style>
-        /* スマホ用: スクロール・ズーム・選択を完全無効化 */
+        /* 基本設定：画面揺れや選択を禁止 */
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden; background-color: transparent !important;
-            touch-action: none;
-            user-select: none;
-            -webkit-user-select: none;
+            touch-action: none; user-select: none; -webkit-user-select: none;
         }
         .a-canvas {
             background-color: transparent !important;
@@ -24,38 +22,29 @@
         #arjs-video {
             z-index: -1 !important; position: fixed !important;
             top: 0; left: 0; width: 100%; height: 100%;
-            display: block !important;
-            object-fit: cover !important;
+            display: block !important; object-fit: cover !important;
         }
+
+        /* UIボタン類 */
         #launcher {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 99999;
-            display: flex; flex-direction: column;
-            justify-content: center; align-items: center;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
         }
         #launch-btn {
-            padding: 20px 50px; font-size: 20px; font-weight: bold;
-            color: white; background: #00C853; border: none; border-radius: 50px;
-            box-shadow: 0 0 25px #00C853; cursor: pointer;
-            -webkit-tap-highlight-color: transparent;
+            padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
+            background: #00C853; border: none; border-radius: 50px; cursor: pointer;
         }
         #reset-btn {
             position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
-            z-index: 99999;
-            padding: 15px 50px; 
-            background: rgba(0, 122, 255, 0.9);
+            z-index: 99999; padding: 15px 50px; background: rgba(0, 122, 255, 0.9);
             color: white; border: 2px solid white; border-radius: 40px;
-            font-size: 18px; font-weight: bold; cursor: pointer;
-            display: none;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-            -webkit-tap-highlight-color: transparent;
+            font-size: 18px; font-weight: bold; cursor: pointer; display: none;
         }
-        #reset-btn:active { transform: translateX(-50%) scale(0.95); }
         #fix-bg-btn {
             position: fixed; bottom: 40px; right: 20px; z-index: 99999;
             padding: 10px; background: rgba(0,0,0,0.5); color: #ccc;
-            border: 1px solid #888; border-radius: 8px; font-size: 12px;
-            display: none;
+            border: 1px solid #888; border-radius: 8px; font-size: 12px; display: none;
         }
         #status-text {
             position: fixed; top: 30px; width: 100%; text-align: center;
@@ -65,6 +54,7 @@
     </style>
 
     <script>
+        // カメラ起動処理
         function startCamera() {
             document.getElementById('launch-btn').innerText = "Starting...";
             setTimeout(() => {
@@ -76,11 +66,13 @@
             }, 500);
         }
 
+        // 位置とサイズのリセット
         function resetPositions() {
             const camera = document.querySelector('[camera]');
             const acorn = document.getElementById('wrapper-acorn');
             const pain = document.getElementById('wrapper-pain');
             
+            // カメラの前方に配置しなおす計算
             const cameraPos = camera.object3D.position;
             const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.object3D.quaternion).multiplyScalar(2.5);
             const centerPos = cameraPos.clone().add(forward);
@@ -90,12 +82,13 @@
             acorn.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(-offset)));
             pain.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(offset)));
 
+            // スケールを初期値に戻す
             acorn.object3D.scale.set(1, 1, 1);
             pain.object3D.scale.set(1, 1, 1);
             
-            // リセット時にステートもクリア
-            acorn.components['drag-wrapper'].resetState();
-            pain.components['drag-wrapper'].resetState();
+            // 内部状態のリセット
+            if(acorn.components['drag-wrapper']) acorn.components['drag-wrapper'].reset();
+            if(pain.components['drag-wrapper']) pain.components['drag-wrapper'].reset();
         }
 
         function forceTransparent() {
@@ -103,26 +96,30 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 【修正版】ドラッグ & 拡大縮小操作 ---
+        // --- 修正版: 1本指移動 / 2本指拡縮 (完全分離) ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
-                this.isActive = false; // このオブジェクトを操作中かどうか
-                this.isScaling = false;
+                this.isActive = false; // このオブジェクトを操作中か
+                this.mode = 'none';    // 現在のモード: 'move' or 'scale' or 'none'
                 
+                // スケール計算用
                 this.startDistance = 0;
-                this.initialScale = new THREE.Vector3();
+                this.baseScale = new THREE.Vector3();
 
+                // 画面座標変換係数
                 const isPortrait = window.innerHeight > window.innerWidth;
                 this.xFactor = isPortrait ? 2.5 : 4.0; 
                 this.yFactor = isPortrait ? 4.0 : 3.0;
                 this.fingerOffsetY = 0.8; 
 
-                const getDistance = (touches) => {
-                    const dx = touches[0].pageX - touches[1].pageX;
-                    const dy = touches[0].pageY - touches[1].pageY;
+                // 2点間の距離を測る
+                const getDistance = (t1, t2) => {
+                    const dx = t1.pageX - t2.pageX;
+                    const dy = t1.pageY - t2.pageY;
                     return Math.sqrt(dx * dx + dy * dy);
                 };
 
+                // 指の位置へ移動させる処理
                 const moveToFinger = (cx, cy) => {
                     const sx = (cx / window.innerWidth) * 2 - 1;
                     const sy = -(cy / window.innerHeight) * 2 + 1;
@@ -130,94 +127,99 @@
                     this.el.object3D.position.y = (sy * this.yFactor) + 1.6 + this.fingerOffsetY;
                 };
 
-                // ステートリセット用
-                this.resetState = () => {
+                // 外部からリセットするための関数
+                this.reset = () => {
                     this.isActive = false;
-                    this.isScaling = false;
+                    this.mode = 'none';
                 };
 
-                // --- 1. オブジェクトに触れた時 (操作開始) ---
+                // --- 1. タッチ開始 (オブジェクトに触れたらアクティブ化) ---
                 this.el.addEventListener('touchstart', (e) => {
                     if (e.cancelable) e.preventDefault();
-                    // 触れた瞬間に「このオブジェクトが操作対象である」とマークする
                     this.isActive = true;
-                    
-                    // とりあえず1本指なら即座にドラッグ位置合わせ
+
+                    // 1本指で開始した場合、即座に移動モードへ
                     if (e.touches.length === 1) {
-                        this.isScaling = false;
-                        const touch = e.touches[0];
-                        moveToFinger(touch.clientX, touch.clientY);
+                        this.mode = 'move';
+                        const t = e.touches[0];
+                        moveToFinger(t.clientX, t.clientY);
+                    }
+                    // 2本指で開始した場合（稀）、スケールモード準備
+                    else if (e.touches.length === 2) {
+                        this.mode = 'scale';
+                        this.startDistance = getDistance(e.touches[0], e.touches[1]);
+                        this.baseScale.copy(this.el.object3D.scale);
                     }
                 }, { passive: false });
 
-                // --- 2. 画面上での指の動き (window全体で監視) ---
-                // ※これにより2本目の指が背景にあっても検知できる
+                // --- 2. タッチ移動 (画面全体で監視) ---
+                // ※オブジェクトから指がはみ出ても追従させるため window を使用
                 window.addEventListener('touchmove', (e) => {
-                    // 操作対象でなければ無視
-                    if (!this.isActive) return;
+                    if (!this.isActive) return; // このオブジェクトのアクティブ中でなければ何もしない
                     if (e.cancelable) e.preventDefault();
 
-                    // --- A. 拡大縮小 (2本指) ---
-                    if (e.touches.length === 2) {
-                        // 拡大縮小モードへ移行していなければ初期化
-                        if (!this.isScaling) {
-                            this.isScaling = true;
-                            this.startDistance = getDistance(e.touches);
-                            this.initialScale.copy(this.el.object3D.scale);
-                            return; // 初回フレームは移動させず、基準点を作るだけ
+                    const touches = e.touches;
+
+                    // ★★★ ここで分岐: 2本指なら「絶対」に移動させない ★★★
+
+                    // 【ケースA: 2本指 = 拡大縮小】
+                    if (touches.length === 2) {
+                        // モード切り替え直後の初期化
+                        if (this.mode !== 'scale') {
+                            this.mode = 'scale';
+                            this.startDistance = getDistance(touches[0], touches[1]);
+                            this.baseScale.copy(this.el.object3D.scale);
+                            return; // 初回は計算せず終了
                         }
 
-                        // 拡大縮小の計算
-                        const currentDistance = getDistance(e.touches);
+                        // 距離計算と拡縮適用
+                        const currentDist = getDistance(touches[0], touches[1]);
                         if (this.startDistance === 0) return;
-                        
-                        const scaleFactor = currentDistance / this.startDistance;
-                        let newScale = this.initialScale.x * scaleFactor;
 
+                        const ratio = currentDist / this.startDistance;
+                        let newScale = this.baseScale.x * ratio;
+
+                        // 制限 (0.1倍 ～ 5.0倍)
                         if (newScale < 0.1) newScale = 0.1;
                         if (newScale > 5.0) newScale = 5.0;
 
                         this.el.object3D.scale.set(newScale, newScale, newScale);
-                    } 
-                    // --- B. 移動 (1本指) ---
-                    else if (e.touches.length === 1) {
-                        // もし2本指から1本指に戻った場合、拡大縮小フラグを下ろす
-                        this.isScaling = false;
+                    }
+                    
+                    // 【ケースB: 1本指 = 移動】
+                    else if (touches.length === 1) {
+                        // もし直前まで2本指(scale)だった場合、急に座標を更新すると飛ぶので
+                        // 一旦同期をとる、あるいはスムーズに移行する
+                        if (this.mode === 'scale') {
+                            this.mode = 'move';
+                            // 2本指から1本指になった瞬間は、位置更新を1回スキップして
+                            // 「位置飛び」を防ぐのが安全ですが、今回は直感性を優先して即座に追従させます。
+                        }
                         
-                        const touch = e.touches[0];
-                        moveToFinger(touch.clientX, touch.clientY);
+                        this.mode = 'move';
+                        const t = touches[0];
+                        moveToFinger(t.clientX, t.clientY);
                     }
                 }, { passive: false });
 
-                // --- 3. 指を離した時 ---
+                // --- 3. タッチ終了 ---
                 const endAction = (e) => {
                     if (!this.isActive) return;
                     
-                    // 全ての指が離れたら操作終了
+                    // 指が全部離れたら終了
                     if (e.touches.length === 0) {
                         this.isActive = false;
-                        this.isScaling = false;
+                        this.mode = 'none';
                     }
-                    // 2本 -> 1本になったときは、touchmove側でハンドリングされるのでここでは何もしない
+                    // まだ指が残っている場合(2本->1本など)は touchmove 側でモードが変わるのを待つ
                 };
 
                 window.addEventListener('touchend', endAction);
-                window.addEventListener('mouseup', endAction);
-
-                // PCデバッグ用
-                this.el.addEventListener('mousedown', (e) => {
-                    this.isActive = true;
-                    moveToFinger(e.clientX, e.clientY);
-                });
-                window.addEventListener('mousemove', (e) => {
-                    if (this.isActive && !this.isScaling) { // PCでは右クリック等がなければScaleは発生しない前提
-                        moveToFinger(e.clientX, e.clientY);
-                    }
-                });
+                window.addEventListener('touchcancel', endAction); // キャンセル時も終了
             }
         });
 
-        // --- 衝突判定 (変更なし) ---
+        // --- 衝突判定 ---
         AFRAME.registerComponent('collision-check', {
             tick: function () {
                 const w1 = document.querySelector('#wrapper-acorn');
@@ -231,7 +233,7 @@
                     document.getElementById('status-text').style.color = "#FF3333";
                     w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
                 } else {
-                    document.getElementById('status-text').innerText = "Tap & Drag / Pinch Scale";
+                    document.getElementById('status-text').innerText = "1 Finger: Move / 2 Fingers: Scale";
                     document.getElementById('status-text').style.color = "yellow";
                     w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = 0;
                 }
