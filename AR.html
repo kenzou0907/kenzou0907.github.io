@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Mobile Optimized</title>
+    <title>AR Mobile Optimized (Zoom & Drag)</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
 
@@ -39,10 +39,10 @@
             padding: 20px 50px; font-size: 20px; font-weight: bold;
             color: white; background: #00C853; border: none; border-radius: 50px;
             box-shadow: 0 0 25px #00C853; cursor: pointer;
-            -webkit-tap-highlight-color: transparent; /* タップ時の青い枠を消す */
+            -webkit-tap-highlight-color: transparent;
         }
 
-        /* UI: リセットボタン (押しやすい大きさに) */
+        /* UI: リセットボタン */
         #reset-btn {
             position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
             z-index: 99999;
@@ -89,15 +89,19 @@
             const acorn = document.getElementById('wrapper-acorn');
             const pain = document.getElementById('wrapper-pain');
             
+            // 位置のリセット
             const cameraPos = camera.object3D.position;
             const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.object3D.quaternion).multiplyScalar(2.5);
             const centerPos = cameraPos.clone().add(forward);
             const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.object3D.quaternion);
             
-            // スマホ画面で見やすいように間隔を少し狭める (0.4m)
             const offset = 0.4;
             acorn.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(-offset)));
             pain.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(offset)));
+
+            // スケールのリセット (初期値に戻す)
+            acorn.object3D.scale.set(1, 1, 1);
+            pain.object3D.scale.set(1, 1, 1);
         }
 
         function forceTransparent() {
@@ -105,68 +109,109 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 【モバイル最適化版】ドラッグ操作 ---
+        // --- 【追加】ピンチイン・ピンチアウト (拡大縮小) ---
+        AFRAME.registerComponent('pinch-scale', {
+            init: function() {
+                this.initialDistance = 0;
+                this.initialScale = 1;
+                this.isPinching = false;
+
+                // 2点間の距離を計算するヘルパー関数
+                const getDistance = (t1, t2) => {
+                    const dx = t1.clientX - t2.clientX;
+                    const dy = t1.clientY - t2.clientY;
+                    return Math.sqrt(dx * dx + dy * dy);
+                };
+
+                this.el.addEventListener('touchstart', (e) => {
+                    if (e.touches.length === 2) {
+                        this.isPinching = true;
+                        this.initialDistance = getDistance(e.touches[0], e.touches[1]);
+                        this.initialScale = this.el.object3D.scale.x; // 現在のスケールを取得
+                    }
+                });
+
+                window.addEventListener('touchmove', (e) => {
+                    if (this.isPinching && e.touches.length === 2) {
+                        const newDistance = getDistance(e.touches[0], e.touches[1]);
+                        
+                        // 距離の変化率を計算
+                        // 感度を調整したい場合はこのあたりをいじります
+                        const scaleFactor = newDistance / this.initialDistance; 
+
+                        // 新しいサイズ
+                        let newScale = this.initialScale * scaleFactor;
+
+                        // 最小・最大サイズの制限 (0.1倍 ～ 10倍)
+                        if (newScale < 0.1) newScale = 0.1;
+                        if (newScale > 10.0) newScale = 10.0;
+
+                        this.el.object3D.scale.set(newScale, newScale, newScale);
+                    }
+                });
+
+                window.addEventListener('touchend', (e) => {
+                    // 指が離れたらピンチ終了
+                    if (e.touches.length < 2) {
+                        this.isPinching = false;
+                    }
+                });
+            }
+        });
+
+        // --- ドラッグ操作 (修正版) ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isDragging = false;
-                
-                // ★スマホ画面に合わせた感度設定
-                // 縦画面(Portrait)の場合、横幅が狭いのでX感度を下げる
                 const isPortrait = window.innerHeight > window.innerWidth;
                 this.xFactor = isPortrait ? 2.5 : 4.0; 
                 this.yFactor = isPortrait ? 4.0 : 3.0;
-
-                // ★指隠れ防止オフセット (指の少し上に表示する距離)
                 this.fingerOffsetY = 0.8; 
-                // ※ここを 0 にすると指の真下になります
 
-                // 共通移動関数
                 const moveToFinger = (cx, cy) => {
-                    // 画面座標 (-1 ~ 1)
                     const sx = (cx / window.innerWidth) * 2 - 1;
                     const sy = -(cy / window.innerHeight) * 2 + 1;
-
-                    // 移動適用
                     this.el.object3D.position.x = sx * this.xFactor;
-                    
-                    // Y座標は「指の位置」+「オフセット」+「基本の高さ(1.6m)」
-                    // これで指の上にオブジェクトが見えるようになります
                     this.el.object3D.position.y = (sy * this.yFactor) + 1.6 + this.fingerOffsetY;
                 };
 
-                // --- タッチ開始 ---
                 this.el.addEventListener('touchstart', (e) => {
+                    // 2本指(ピンチ中)の場合はドラッグを開始しない
+                    if (e.touches.length > 1) return;
+
                     if(e.cancelable) e.preventDefault();
                     this.isDragging = true;
                     
-                    // タップした瞬間のフィードバック（少し縮む）
-                    this.el.object3D.scale.set(0.9, 0.9, 0.9);
+                    // ★修正: タップ時の縮小エフェクトを削除 (拡大縮小機能と競合するため)
+                    // this.el.object3D.scale.set(0.9, 0.9, 0.9); 
                     
                     const touch = e.touches[0];
                     moveToFinger(touch.clientX, touch.clientY);
                 }, { passive: false });
 
-                // --- マウスダウン (PC用) ---
+                // PC用
                 this.el.addEventListener('mousedown', (e) => {
                     this.isDragging = true;
-                    this.el.object3D.scale.set(0.9, 0.9, 0.9);
                     moveToFinger(e.clientX, e.clientY);
                 });
 
-                // --- 終了処理 ---
                 const endDrag = () => {
                     if (this.isDragging) {
                         this.isDragging = false;
-                        this.el.object3D.scale.set(1.0, 1.0, 1.0);
+                        // ★修正: リセットも削除
                     }
                 };
                 window.addEventListener('touchend', endDrag);
                 window.addEventListener('mouseup', endDrag);
 
-                // --- 移動処理 ---
                 window.addEventListener('touchmove', (e) => {
+                    // 2本指の場合はドラッグしない
+                    if (e.touches.length > 1) {
+                        this.isDragging = false;
+                        return;
+                    }
                     if (!this.isDragging) return;
-                    if(e.cancelable) e.preventDefault(); // 画面揺れ防止
+                    if(e.cancelable) e.preventDefault();
                     const touch = e.touches[0];
                     moveToFinger(touch.clientX, touch.clientY);
                 }, { passive: false });
@@ -191,7 +236,7 @@
                     document.getElementById('status-text').style.color = "#FF3333";
                     w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
                 } else {
-                    document.getElementById('status-text').innerText = "Tap & Drag";
+                    document.getElementById('status-text').innerText = "Drag & Pinch";
                     document.getElementById('status-text').style.color = "yellow";
                     w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = 0;
                 }
@@ -218,12 +263,12 @@
         <a-entity light="type: ambient; intensity: 1.0; color: #fff;"></a-entity>
         <a-entity light="type: directional; intensity: 1.0; position: 1 2 1;"></a-entity>
 
-        <a-entity id="wrapper-acorn" position="-0.4 1.6 -3.0" drag-wrapper>
+        <a-entity id="wrapper-acorn" position="-0.4 1.6 -3.0" drag-wrapper pinch-scale>
             <a-sphere class="clickable" radius="1.2" material="opacity: 0.0; transparent: true"></a-sphere>
             <a-entity class="clickable" gltf-model="url(acorn.glb)" scale="12 12 12" position="0 -0.5 0"></a-entity>
         </a-entity>
 
-        <a-entity id="wrapper-pain" position="0.4 1.6 -3.0" drag-wrapper>
+        <a-entity id="wrapper-pain" position="0.4 1.6 -3.0" drag-wrapper pinch-scale>
             <a-sphere class="clickable" radius="1.2" material="opacity: 0.0; transparent: true"></a-sphere>
             <a-entity class="clickable" gltf-model="url(pain.glb)" scale="0.012 0.012 0.012" position="0 -0.5 0"></a-entity>
         </a-entity>
