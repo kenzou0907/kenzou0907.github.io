@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Shape Exact Match</title>
+    <title>AR Exact Mesh Touch</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
 
@@ -9,7 +9,6 @@
     <script src="https://raw.githack.com/AR-js-org/AR.js/3.3.2/aframe/build/aframe-ar.js"></script>
 
     <style>
-        /* 画面全体の固定 */
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden; background-color: transparent !important;
@@ -25,7 +24,6 @@
             top: 0; left: 0; width: 100%; height: 100%;
             display: block !important; object-fit: cover !important;
         }
-
         /* UI類 */
         #launcher {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -34,7 +32,7 @@
         }
         #launch-btn {
             padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
-            background: blue; border: none; border-radius: 50px; cursor: pointer;
+            background: #00C853; border: none; border-radius: 50px; cursor: pointer;
         }
         #reset-btn {
             position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
@@ -98,7 +96,7 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- ドラッグ＆回転コンポーネント ---
+        // --- 強力版ドラッグ＆回転コンポーネント ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isActive = false;
@@ -114,7 +112,6 @@
                 this.startRotationY = 0;
                 this.rotationSpeed = 0.01;
 
-                // 座標変換用
                 const isPortrait = window.innerHeight > window.innerWidth;
                 this.xFactor = isPortrait ? 2.5 : 4.0; 
                 this.yFactor = isPortrait ? 4.0 : 3.0;
@@ -153,15 +150,31 @@
                     this.mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
                     this.mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
 
+                    // 【重要修正】座標行列を最新の状態に強制更新
+                    // これを行わないと、見た目と内部判定の位置がズレることがあります
+                    this.camera.updateMatrixWorld(); 
+                    this.el.object3D.updateMatrixWorld(true);
+
                     this.raycaster.setFromCamera(this.mouse, this.camera);
                     
-                    // Sphereを削除したため、GLTFモデル（Mesh）に直接当たる必要がある
-                    // recursive: true で子要素のMeshを探す
-                    const intersects = this.raycaster.intersectObject(this.el.object3D, true);
+                    // 【重要修正】Mesh(網目)のみを厳密に抽出して判定対象にする
+                    // グループ(空の箱)ではなく、実際のポリゴンデータに対して判定を行います
+                    let meshes = [];
+                    this.el.object3D.traverse((node) => {
+                        if (node.isMesh) {
+                            meshes.push(node);
+                        }
+                    });
+
+                    // 抽出したメッシュに対して判定
+                    const intersects = this.raycaster.intersectObjects(meshes, true);
 
                     if (intersects.length > 0) {
                         if (e.cancelable) e.preventDefault();
                         this.isActive = true;
+
+                        // タッチされたことを視覚的に少しフィードバック（任意）
+                        // console.log("Touched Object:", this.el.id);
 
                         if (e.touches.length === 1) {
                             this.mode = 'move';
@@ -234,31 +247,43 @@
         // --- 形状に合わせた衝突判定 (AABB) ---
         AFRAME.registerComponent('collision-check', {
             init: function () {
-                // パフォーマンスのためBoxオブジェクトは使い回す
                 this.box1 = new THREE.Box3();
                 this.box2 = new THREE.Box3();
             },
             tick: function () {
                 const w1 = document.querySelector('#wrapper-acorn');
                 const w2 = document.querySelector('#wrapper-pain');
+                // モデルがロードされているか確認（メッシュが存在するか）
+                // まだロードされていない場合は処理をスキップ
                 if (!w1 || !w2) return;
+                
+                // バウンディングボックス計算
+                // updateMatrixWorldをここでも呼ぶことで正確性を向上
+                w1.object3D.updateMatrixWorld(true);
+                w2.object3D.updateMatrixWorld(true);
 
-                // オブジェクトの現在のスケール・回転・位置に基づいた
-                // 正確なバウンディングボックス（AABB）を計算
                 this.box1.setFromObject(w1.object3D);
                 this.box2.setFromObject(w2.object3D);
 
-                // ボックス同士が重なっているか判定
+                // 空のボックス（モデル未ロード時など）の場合は判定しない
+                if (this.box1.isEmpty() || this.box2.isEmpty()) return;
+
                 const isHit = this.box1.intersectsBox(this.box2);
 
                 if (isHit) { 
                     document.getElementById('status-text').innerText = "HIT !!";
                     document.getElementById('status-text').style.color = "#FF3333";
-                    w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
+                    const modelEntity = w2.querySelector('a-entity[gltf-model]');
+                    if(modelEntity) {
+                        modelEntity.object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
+                    }
                 } else {
                     document.getElementById('status-text').innerText = "1 Finger: Move / 2 Fingers: Scale & Rotate";
                     document.getElementById('status-text').style.color = "yellow";
-                    w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = 0;
+                    const modelEntity = w2.querySelector('a-entity[gltf-model]');
+                    if(modelEntity) {
+                        modelEntity.object3D.rotation.z = 0;
+                    }
                 }
             }
         });
