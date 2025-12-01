@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Debug Mode</title>
+    <title>AR Raycaster Fix</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
 
@@ -24,6 +24,8 @@
             top: 0; left: 0; width: 100%; height: 100%;
             display: block !important; object-fit: cover !important;
         }
+        
+        /* UI類 */
         #launcher {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 99999;
@@ -31,7 +33,7 @@
         }
         #launch-btn {
             padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
-            background: blue; border: none; border-radius: 50px; cursor: pointer;
+            background: #00C853; border: none; border-radius: 50px; cursor: pointer;
         }
         #reset-btn {
             position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
@@ -45,22 +47,21 @@
             border: 1px solid #888; border-radius: 8px; font-size: 12px; display: none;
         }
         
-        /* デバッグ表示用 */
+        /* デバッグログ表示エリア */
         #status-text {
-            position: fixed; top: 10px; left: 0; width: 100%; text-align: center;
-            color: yellow; font-weight: bold; font-size: 16px;
+            position: fixed; top: 10px; left: 10px; width: 300px;
+            color: #00FF00; font-weight: bold; font-size: 14px;
             text-shadow: 1px 1px 2px black; pointer-events: none; z-index: 9000;
-            white-space: pre-wrap; /* 改行許可 */
-            background: rgba(0,0,0,0.5);
-            padding: 5px;
+            white-space: pre-wrap;
+            background: rgba(0,0,0,0.6);
+            padding: 5px; border-radius: 5px;
         }
     </style>
 
     <script>
-        // ログ表示関数
-        function showStatus(msg) {
+        function log(msg) {
             const el = document.getElementById('status-text');
-            if(el) el.innerText = msg;
+            if(el) el.innerText = msg + "\n" + el.innerText.split("\n").slice(0, 4).join("\n");
             console.log(msg);
         }
 
@@ -96,6 +97,8 @@
 
             if(acorn.components['drag-wrapper']) acorn.components['drag-wrapper'].reset();
             if(pain.components['drag-wrapper']) pain.components['drag-wrapper'].reset();
+            
+            log("Positions Reset");
         }
 
         function forceTransparent() {
@@ -103,13 +106,12 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- デバッグ用ドラッグコンポーネント ---
+        // --- 修正版ヒットボックスコンポーネント ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isActive = false;
                 this.mode = 'none';
                 this.hitBoxMesh = null;
-                this.retryCount = 0;
 
                 this.raycaster = new THREE.Raycaster();
                 this.mouse = new THREE.Vector2();
@@ -127,83 +129,57 @@
                 this.yFactor = isPortrait ? 4.0 : 3.0;
                 this.fingerOffsetY = 0.8; 
 
-                showStatus("Waiting for models...");
-
-                // モデル読み込み完了検知
+                // モデル読み込み完了イベント
                 this.el.addEventListener('model-loaded', () => {
-                    showStatus("Model Loaded. Creating HitBox...");
-                    // 少し待ってから作成（レンダリングの確定待ち）
+                    log("Model loaded. Waiting for render...");
                     setTimeout(() => this.createHitBox(), 500);
                 });
 
-                // 既に読み込まれている場合の保険
                 setTimeout(() => {
-                    if (!this.hitBoxMesh) this.createHitBox();
+                    if (!this.hitBoxMesh && this.el.getObject3D('mesh')) this.createHitBox();
                 }, 3000);
 
-                // --- ヒットボックス生成 ---
+                // ヒットボックス生成
                 this.createHitBox = () => {
                     if (this.hitBoxMesh) return;
 
                     const obj = this.el.object3D;
-                    // 行列を最新に更新
                     obj.updateMatrixWorld(true);
 
-                    // バウンディングボックス計算
                     const box = new THREE.Box3().setFromObject(obj);
-                    
-                    // ボックスが空、あるいは極端に小さい場合
                     const size = new THREE.Vector3();
                     box.getSize(size);
 
-                    if (box.isEmpty() || (size.x < 0.001 && size.y < 0.001)) {
-                        this.retryCount++;
-                        if(this.retryCount < 5) {
-                            showStatus(`Retrying HitBox... (${this.retryCount})`);
-                            setTimeout(this.createHitBox, 1000);
-                        } else {
-                            // 諦めてデフォルトの箱を作る
-                            this.createDefaultBox();
-                        }
+                    if (box.isEmpty() || size.length() < 0.001) {
+                        setTimeout(this.createHitBox, 1000);
                         return;
                     }
 
-                    const center = new THREE.Vector3();
-                    box.getCenter(center);
-
-                    // 赤い半透明の箱（デバッグ用）
-                    const geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+                    // --- 修正点: 箱を少し大きくする(1.2倍) ---
+                    const geometry = new THREE.BoxGeometry(size.x * 1.2, size.y * 1.2, size.z * 1.2);
+                    
                     const material = new THREE.MeshBasicMaterial({
                         color: 0xff0000, 
-                        opacity: 0.5,       // 半透明で見えるようにする
+                        opacity: 0.4,       
                         transparent: true,
-                        wireframe: false,
                         visible: true
                     });
                     
                     this.hitBoxMesh = new THREE.Mesh(geometry, material);
                     
-                    // ワールド座標の中心を、親要素（Wrapper）のローカル座標に変換して配置
-                    // これによりズレを防ぐ
+                    const center = new THREE.Vector3();
+                    box.getCenter(center);
                     const localCenter = obj.worldToLocal(center.clone());
                     this.hitBoxMesh.position.copy(localCenter);
 
                     this.el.object3D.add(this.hitBoxMesh);
-                    showStatus(`HitBox Created!\nSize: ${size.x.toFixed(2)}, ${size.y.toFixed(2)}`);
+                    log("HitBox Created!");
                 };
-
-                // 失敗時の強制ボックス
-                this.createDefaultBox = () => {
-                    showStatus("Force Default Box");
-                    const geometry = new THREE.BoxGeometry(1, 1, 1);
-                    const material = new THREE.MeshBasicMaterial({ color: 0x0000ff, opacity: 0.5, transparent: true });
-                    this.hitBoxMesh = new THREE.Mesh(geometry, material);
-                    this.el.object3D.add(this.hitBoxMesh);
-                }
 
                 this.reset = () => {
                     this.isActive = false;
                     this.mode = 'none';
+                    if(this.hitBoxMesh) this.hitBoxMesh.material.color.set(0xff0000);
                 };
 
                 const getDistance = (t1, t2) => {
@@ -219,27 +195,35 @@
                     this.el.object3D.position.y = (sy * this.yFactor) + 1.6 + this.fingerOffsetY;
                 };
 
-                // --- タッチイベント ---
+                // --- タッチ開始 ---
                 window.addEventListener('touchstart', (e) => {
                     if (!this.camera) this.camera = this.el.sceneEl.camera;
                     if (!this.hitBoxMesh) return;
 
                     const touch = e.touches[0];
-                    this.mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
-                    this.mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+                    const canvas = this.el.sceneEl.canvas;
+                    if (!canvas) return;
+
+                    // --- 【重要修正】キャンバス基準の座標計算 ---
+                    const rect = canvas.getBoundingClientRect();
+                    this.mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+                    this.mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+
+                    // デバッグログ: 座標が正しい範囲(-1〜1)か確認
+                    // log(`X:${this.mouse.x.toFixed(2)} Y:${this.mouse.y.toFixed(2)}`);
 
                     this.hitBoxMesh.updateMatrixWorld(); 
                     this.raycaster.setFromCamera(this.mouse, this.camera);
                     
-                    // 生成した箱に対して判定
                     const intersects = this.raycaster.intersectObject(this.hitBoxMesh, false);
 
                     if (intersects.length > 0) {
                         if (e.cancelable) e.preventDefault();
                         this.isActive = true;
                         
-                        // 触れたら緑色にする（反応確認用）
+                        // 当たったら「緑」にする
                         this.hitBoxMesh.material.color.set(0x00ff00);
+                        log("TOUCHED! (Green)");
 
                         if (e.touches.length === 1) {
                             this.mode = 'move';
@@ -251,6 +235,9 @@
                             this.startMidX = getMidX(e.touches[0], e.touches[1]);
                             this.startRotationY = this.el.object3D.rotation.y;
                         }
+                    } else {
+                        // ハズレた場合
+                        // log("Miss...");
                     }
                 }, { passive: false });
 
@@ -258,7 +245,6 @@
                     if (!this.isActive) return;
                     if (e.cancelable) e.preventDefault();
                     
-                    // 移動中も緑
                     this.hitBoxMesh.material.color.set(0x00ff00);
 
                     const touches = e.touches;
@@ -301,6 +287,7 @@
                         this.mode = 'none';
                         // 離したら赤に戻す
                         if(this.hitBoxMesh) this.hitBoxMesh.material.color.set(0xff0000);
+                        log("Released");
                     }
                 };
                 window.addEventListener('touchend', endAction);
@@ -331,26 +318,20 @@
                 this.box2.setFromObject(mesh2);
 
                 if (this.box1.intersectsBox(this.box2)) { 
-                    // 衝突したらStatusTextを変える
-                    const status = document.getElementById('status-text');
-                    // 既存のテキストを残しつつHIT表示
-                    if(!status.innerText.includes("HIT")) {
-                        status.innerText += "\n[ HIT !! ]";
-                    }
-                    status.style.color = "#FF3333";
-
+                    document.getElementById('status-text').innerText = "HIT !!";
+                    document.getElementById('status-text').style.color = "#FF3333";
                     const modelEntity = w2.querySelector('a-entity[gltf-model]');
                     if(modelEntity) modelEntity.object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
                 } else {
+                    // HITでないときは、通常のログ表示エリアとして使うため上書きしない
+                    // (ログ機能とバッティングするため、ここではHIT時のみ強調する形にします)
                     const status = document.getElementById('status-text');
-                    status.style.color = "yellow";
-                    // HIT文字を消す簡易処理
-                    if(status.innerText.includes("HIT")) {
-                        status.innerText = status.innerText.replace("\n[ HIT !! ]", "");
+                    if (status.innerText.includes("HIT !!")) {
+                        status.innerText = "Ready";
+                        status.style.color = "#00FF00";
+                        const modelEntity = w2.querySelector('a-entity[gltf-model]');
+                        if(modelEntity) modelEntity.object3D.rotation.z = 0;
                     }
-                    
-                    const modelEntity = w2.querySelector('a-entity[gltf-model]');
-                    if(modelEntity) modelEntity.object3D.rotation.z = 0;
                 }
             }
         });
@@ -361,7 +342,6 @@
     <div id="launcher"><button id="launch-btn" onclick="startCamera()">START CAMERA</button></div>
     <button id="reset-btn" onclick="resetPositions()">RESET POSITION</button>
     <button id="fix-bg-btn" onclick="forceTransparent()">Fix BG</button>
-    
     <div id="status-text">Initializing...</div>
 
     <a-scene embedded
