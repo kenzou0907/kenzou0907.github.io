@@ -19,7 +19,6 @@
             display: block !important;
             z-index: 10 !important;
         }
-        /* AR.jsが生成するビデオ要素のID */
         #arjs-video {
             z-index: 1 !important; position: fixed !important;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -33,7 +32,7 @@
         }
         #launch-btn {
             padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
-            background: blue; border: none; border-radius: 50px; cursor: pointer;
+            background: #00C853; border: none; border-radius: 50px; cursor: pointer;
         }
 
         #reset-btn {
@@ -98,58 +97,14 @@
             }, 500);
         }
 
-        // --- 写真撮影機能の実装（修正版） ---
+        // --- 修正版：写真撮影トリガー関数 ---
         function takePhoto() {
             const scene = document.querySelector('a-scene');
-            // AR.jsが生成するビデオ要素を取得
-            const video = document.getElementById('arjs-video');
-            // A-Frameの3Dキャンバスを取得
-            const sceneCanvas = scene.renderer.domElement;
-
-            if (!video || !sceneCanvas) {
-                log("Video or Canvas not ready.");
-                return;
-            }
-
-            try {
-                // 撮影時の視覚効果
-                const shutterBtn = document.getElementById('shutter-btn');
-                const originalBg = shutterBtn.style.background;
-                shutterBtn.style.background = "white";
-                setTimeout(() => { shutterBtn.style.background = originalBg; }, 100);
-                log("Capturing...");
-
-                // 合成用の一時的なキャンバスを作成
-                const combinedCanvas = document.createElement('canvas');
-                // ビデオの解像度に合わせる
-                combinedCanvas.width = video.videoWidth;
-                combinedCanvas.height = video.videoHeight;
-                const ctx = combinedCanvas.getContext('2d');
-
-                // 1. カメラ映像を描画
-                ctx.drawImage(video, 0, 0, combinedCanvas.width, combinedCanvas.height);
-
-                // 2. 3Dシーンを描画（カメラ映像の上に重ねる）
-                // 3Dキャンバスは画面サイズに合わせて引き伸ばされているので、合成キャンバスのサイズに合わせて描画する
-                ctx.drawImage(sceneCanvas, 0, 0, combinedCanvas.width, combinedCanvas.height);
-
-                // 合成したキャンバスをJPEG画像データに変換（画質0.9）
-                const dataURL = combinedCanvas.toDataURL("image/jpeg", 0.9);
-                
-                // ダウンロードリンクを作成してクリック
-                const link = document.createElement('a');
-                const timestamp = new Date().toISOString().slice(0,19).replace(/[-T:]/g,'');
-                link.download = `AR_Photo_${timestamp}.jpg`;
-                link.href = dataURL;
-                
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-
-                log("Photo saved!");
-            } catch (e) {
-                log("Photo failed: " + e.message);
-                console.error(e);
+            // photo-captureコンポーネントに撮影をリクエストする
+            if (scene.components['photo-capture']) {
+                scene.components['photo-capture'].requestCapture();
+            } else {
+                log("Photo capture component not ready.");
             }
         }
 
@@ -183,6 +138,68 @@
             document.body.style.backgroundColor = 'transparent';
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
+
+        // --- 新規追加：確実に描画直後にキャプチャするためのコンポーネント ---
+        AFRAME.registerComponent('photo-capture', {
+            init: function() {
+                this.captureRequested = false;
+            },
+            requestCapture: function() {
+                this.captureRequested = true;
+            },
+            tick: function() {
+                if (!this.captureRequested) return;
+                // フラグを即座に下ろす
+                this.captureRequested = false;
+
+                // ここで描画処理を行う（tick内なのでオブジェクトは描画済み）
+                const scene = this.el;
+                const video = document.getElementById('arjs-video');
+                const sceneCanvas = scene.renderer.domElement;
+
+                if (!video || !sceneCanvas) {
+                    log("Video or Canvas not ready for capture.");
+                    return;
+                }
+
+                try {
+                    // 撮影時の視覚効果
+                    const shutterBtn = document.getElementById('shutter-btn');
+                    const originalBg = shutterBtn.style.background;
+                    shutterBtn.style.background = "white";
+                    setTimeout(() => { shutterBtn.style.background = originalBg; }, 100);
+                    log("Capturing...");
+
+                    // 合成用キャンバス
+                    const combinedCanvas = document.createElement('canvas');
+                    combinedCanvas.width = video.videoWidth;
+                    combinedCanvas.height = video.videoHeight;
+                    const ctx = combinedCanvas.getContext('2d');
+
+                    // 1. カメラ映像を描画
+                    ctx.drawImage(video, 0, 0, combinedCanvas.width, combinedCanvas.height);
+
+                    // 2. 3Dシーンを描画（このタイミングなら確実に中身がある）
+                    ctx.drawImage(sceneCanvas, 0, 0, combinedCanvas.width, combinedCanvas.height);
+
+                    // 画像データ化とダウンロード
+                    const dataURL = combinedCanvas.toDataURL("image/jpeg", 0.9);
+                    const link = document.createElement('a');
+                    const timestamp = new Date().toISOString().slice(0,19).replace(/[-T:]/g,'');
+                    link.download = `AR_Photo_${timestamp}.jpg`;
+                    link.href = dataURL;
+                    
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+
+                    log("Photo saved!");
+                } catch (e) {
+                    log("Photo failed: " + e.message);
+                    console.error(e);
+                }
+            }
+        });
 
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
@@ -441,7 +458,6 @@
     
     <button id="reset-btn" onclick="resetPositions()">RESET</button>
     <button id="fix-bg-btn" onclick="forceTransparent()">Fix BG</button>
-    
     <button id="shutter-btn" onclick="takePhoto()">TAKE PHOTO</button>
 
     <div id="status-text">Initializing...</div>
@@ -450,7 +466,8 @@
         arjs="sourceType: webcam; debugUIEnabled: false;"
         renderer="logarithmicDepthBuffer: true; colorManagement: true; alpha: true; preserveDrawingBuffer: true;"
         vr-mode-ui="enabled: false"
-        collision-check>
+        collision-check
+        photo-capture>
 
         <a-entity camera position="0 1.6 0"></a-entity>
         <a-entity light="type: ambient; intensity: 1.0; color: #fff;"></a-entity>
