@@ -34,17 +34,41 @@
             padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
             background: #00C853; border: none; border-radius: 50px; cursor: pointer;
         }
+
+        /* --- CSS変更点 --- */
+        
+        /* リセットボタン：右上に移動し、スタイルを調整 */
         #reset-btn {
-            position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
-            z-index: 99999; padding: 15px 50px; background: rgba(0, 122, 255, 0.9);
+            position: fixed; 
+            top: 20px; 
+            right: 20px;
+            z-index: 99999; 
+            padding: 10px 30px;
+            background: rgba(0, 122, 255, 0.9);
             color: white; border: 2px solid white; border-radius: 40px;
-            font-size: 18px; font-weight: bold; cursor: pointer; display: none;
+            font-size: 16px; font-weight: bold; cursor: pointer; display: none;
         }
+
+        /* Fix BGボタン：リセットボタンの下に移動 */
         #fix-bg-btn {
-            position: fixed; bottom: 40px; right: 20px; z-index: 99999;
+            position: fixed; 
+            top: 80px; /* リセットボタンの下 */
+            right: 20px; 
+            z-index: 99999;
             padding: 10px; background: rgba(0,0,0,0.5); color: #ccc;
             border: 1px solid #888; border-radius: 8px; font-size: 12px; display: none;
         }
+
+        /* 新しい撮影ボタン：元のリセットボタンの位置（下部中央）に配置 */
+        #shutter-btn {
+            position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+            z-index: 99999; padding: 15px 60px; 
+            background: rgba(255, 60, 90, 0.9); /* 目立つ色に変更 */
+            color: white; border: 3px solid white; border-radius: 50px;
+            font-size: 22px; font-weight: bold; cursor: pointer; display: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        /* ---------------- */
         
         #status-text {
             position: fixed; top: 10px; left: 10px; width: 300px;
@@ -57,6 +81,8 @@
     </style>
 
     <script>
+        window.isARStarted = false;
+
         function log(msg) {
             const el = document.getElementById('status-text');
             if(el) el.innerText = msg + "\n" + el.innerText.split("\n").slice(0, 4).join("\n");
@@ -69,28 +95,70 @@
                 document.getElementById('launcher').style.display = 'none';
                 document.getElementById('reset-btn').style.display = 'block';
                 document.getElementById('fix-bg-btn').style.display = 'block';
+                // 撮影ボタンを表示
+                document.getElementById('shutter-btn').style.display = 'block';
+                
                 document.querySelector('a-scene').play();
+                window.isARStarted = true;
                 setTimeout(resetPositions, 1000);
             }, 500);
+        }
+
+        // --- 写真撮影機能の実装 ---
+        function takePhoto() {
+            const scene = document.querySelector('a-scene');
+            // rendererから直接キャンバスを取得
+            const canvas = scene.renderer.domElement;
+
+            if (!canvas) {
+                log("Canvas not ready.");
+                return;
+            }
+
+            try {
+                // 撮影時の視覚効果（一時的にフラッシュ）
+                const shutterBtn = document.getElementById('shutter-btn');
+                const originalBg = shutterBtn.style.background;
+                shutterBtn.style.background = "white";
+                setTimeout(() => { shutterBtn.style.background = originalBg; }, 100);
+                log("Capturing...");
+
+                // キャンバスを画像データURIに変換
+                const dataURL = canvas.toDataURL("image/png");
+                
+                // ダウンロードリンクを作成してクリック
+                const link = document.createElement('a');
+                const timestamp = new Date().toISOString().slice(0,19).replace(/[-T:]/g,'');
+                link.download = `AR_Photo_${timestamp}.png`;
+                link.href = dataURL;
+                
+                // Firefoxなどのための対策
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                log("Photo saved!");
+            } catch (e) {
+                log("Photo failed: " + e.message);
+            }
         }
 
         function resetPositions() {
             const camera = document.querySelector('[camera]');
             const acorn = document.getElementById('wrapper-acorn');
-            const nijo = document.getElementById('wrapper-nijo'); // 変数名はnijoのままでもIDが同じなら動きます
+            const nijo = document.getElementById('wrapper-nijo');
             
             const cameraPos = camera.object3D.position;
             const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.object3D.quaternion).multiplyScalar(2.5);
             const centerPos = cameraPos.clone().add(forward);
             const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.object3D.quaternion);
             
-            const offset = 0.6; // 少し間隔を広げました
+            const offset = 0.6;
             acorn.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(-offset)));
             nijo.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(offset)));
 
-            // リセット時のスケール（ここもモデルに合わせて調整が必要かもしれません）
-            acorn.object3D.scale.set(1, 1, 1); // acornの初期スケール(HTML側と合わせる)
-            nijo.object3D.scale.set(0.5, 0.5, 0.5); // min_nijoの初期スケール
+            acorn.object3D.scale.set(1, 1, 1);
+            nijo.object3D.scale.set(0.5, 0.5, 0.5);
             
             acorn.object3D.rotation.set(0, 0, 0); 
             nijo.object3D.rotation.set(0, 0, 0);
@@ -106,7 +174,6 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 相対移動 & スクリーン判定コンポーネント ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isActive = false;
@@ -114,12 +181,10 @@
                 this.hitBoxMesh = null;
                 this.camera = null;
 
-                // --- 移動計算用変数 ---
                 this.startFingerX = 0;
                 this.startFingerY = 0;
                 this.startObjPos = new THREE.Vector3();
 
-                // --- 回転・拡大用変数 ---
                 this.startDistance = 0;
                 this.baseScale = new THREE.Vector3();
                 this.startMidX = 0;
@@ -128,7 +193,6 @@
 
                 this.moveSpeed = 0.003; 
 
-                // モデル読み込み完了イベント
                 this.el.addEventListener('model-loaded', () => {
                     log("Model loaded. Preparing HitBox...");
                     setTimeout(() => this.createHitBox(), 500);
@@ -153,12 +217,11 @@
                         return;
                     }
 
-                    // 判定範囲
                     const geometry = new THREE.BoxGeometry(size.x * 1.3, size.y * 1.3, size.z * 1.3);
                     
                     const material = new THREE.MeshBasicMaterial({
                         color: 0xff0000, 
-                        opacity: 0.0,       // 透明
+                        opacity: 0.0,
                         transparent: true,
                         visible: true,
                         depthTest: false
@@ -175,7 +238,6 @@
                     log("HitBox Ready (Invisible)");
                 };
 
-                // スクリーン判定
                 this.isTouchInsideBox = (touchX, touchY) => {
                     if (!this.hitBoxMesh || !this.camera) return false;
 
@@ -207,7 +269,7 @@
                         if (py < minY) minY = py; if (py > maxY) maxY = py;
                     });
 
-                    const padding = 30; // 判定余裕
+                    const padding = 30;
                     minX -= padding; maxX += padding;
                     minY -= padding; maxY += padding;
 
@@ -227,8 +289,9 @@
                 };
                 const getMidX = (t1, t2) => { return (t1.clientX + t2.clientX) / 2; };
 
-                // --- タッチ開始 ---
                 window.addEventListener('touchstart', (e) => {
+                    if (!window.isARStarted) return;
+
                     if (!this.camera) this.camera = this.el.sceneEl.camera;
                     if (!this.hitBoxMesh) return;
 
@@ -257,7 +320,6 @@
                     }
                 }, { passive: false });
 
-                // --- タッチ移動 ---
                 window.addEventListener('touchmove', (e) => {
                     if (!this.isActive) return;
                     if (e.cancelable) e.preventDefault();
@@ -319,7 +381,6 @@
             }
         });
 
-        // --- 衝突判定 ---
         AFRAME.registerComponent('collision-check', {
             init: function () {
                 this.box1 = new THREE.Box3();
@@ -367,13 +428,17 @@
 
 <body>
     <div id="launcher"><button id="launch-btn" onclick="startCamera()">START CAMERA</button></div>
-    <button id="reset-btn" onclick="resetPositions()">RESET POSITION</button>
+    
+    <button id="reset-btn" onclick="resetPositions()">RESET</button>
     <button id="fix-bg-btn" onclick="forceTransparent()">Fix BG</button>
+    
+    <button id="shutter-btn" onclick="takePhoto()">撮 影</button>
+
     <div id="status-text">Initializing...</div>
 
     <a-scene embedded
         arjs="sourceType: webcam; debugUIEnabled: false;"
-        renderer="logarithmicDepthBuffer: true; colorManagement: true; alpha: true;"
+        renderer="logarithmicDepthBuffer: true; colorManagement: true; alpha: true; preserveDrawingBuffer: true;"
         vr-mode-ui="enabled: false"
         collision-check>
 
