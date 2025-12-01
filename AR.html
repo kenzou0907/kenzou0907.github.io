@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Raycaster Fix</title>
+    <title>AR Visual Hit Test</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
 
@@ -33,7 +33,7 @@
         }
         #launch-btn {
             padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
-            background: #00C853; border: none; border-radius: 50px; cursor: pointer;
+            background: blue; border: none; border-radius: 50px; cursor: pointer;
         }
         #reset-btn {
             position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
@@ -47,7 +47,6 @@
             border: 1px solid #888; border-radius: 8px; font-size: 12px; display: none;
         }
         
-        /* デバッグログ表示エリア */
         #status-text {
             position: fixed; top: 10px; left: 10px; width: 300px;
             color: #00FF00; font-weight: bold; font-size: 14px;
@@ -106,15 +105,12 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 修正版ヒットボックスコンポーネント ---
+        // --- 画面投影方式による判定コンポーネント ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isActive = false;
                 this.mode = 'none';
                 this.hitBoxMesh = null;
-
-                this.raycaster = new THREE.Raycaster();
-                this.mouse = new THREE.Vector2();
                 this.camera = null;
 
                 // 操作変数
@@ -131,7 +127,7 @@
 
                 // モデル読み込み完了イベント
                 this.el.addEventListener('model-loaded', () => {
-                    log("Model loaded. Waiting for render...");
+                    log("Model loaded. Waiting...");
                     setTimeout(() => this.createHitBox(), 500);
                 });
 
@@ -139,7 +135,6 @@
                     if (!this.hitBoxMesh && this.el.getObject3D('mesh')) this.createHitBox();
                 }, 3000);
 
-                // ヒットボックス生成
                 this.createHitBox = () => {
                     if (this.hitBoxMesh) return;
 
@@ -155,14 +150,16 @@
                         return;
                     }
 
-                    // --- 修正点: 箱を少し大きくする(1.2倍) ---
-                    const geometry = new THREE.BoxGeometry(size.x * 1.2, size.y * 1.2, size.z * 1.2);
+                    // 少し余裕を持たせたサイズ (1.3倍)
+                    const geometry = new THREE.BoxGeometry(size.x * 1.3, size.y * 1.3, size.z * 1.3);
                     
+                    // 赤い箱（最初は見える状態で）
                     const material = new THREE.MeshBasicMaterial({
                         color: 0xff0000, 
                         opacity: 0.4,       
                         transparent: true,
-                        visible: true
+                        visible: true,
+                        depthTest: false // 常に手前に表示させる（デバッグしやすくする）
                     });
                     
                     this.hitBoxMesh = new THREE.Mesh(geometry, material);
@@ -175,6 +172,59 @@
                     this.el.object3D.add(this.hitBoxMesh);
                     log("HitBox Created!");
                 };
+
+                // --- 2Dスクリーン判定ロジック ---
+                // 3Dの箱の角を画面上の(x,y)に変換し、その範囲内に指があるかを調べる
+                this.isTouchInsideBox = (touchX, touchY) => {
+                    if (!this.hitBoxMesh || !this.camera) return false;
+
+                    const mesh = this.hitBoxMesh;
+                    mesh.updateMatrixWorld();
+                    this.camera.updateMatrixWorld();
+
+                    // 箱の8つの角のローカル座標
+                    const geo = mesh.geometry;
+                    // BoxGeometryはパラメータから幅・高さ・奥行きがわかる
+                    const w = geo.parameters.width / 2;
+                    const h = geo.parameters.height / 2;
+                    const d = geo.parameters.depth / 2;
+
+                    const corners = [
+                        new THREE.Vector3( w,  h,  d), new THREE.Vector3( w,  h, -d),
+                        new THREE.Vector3( w, -h,  d), new THREE.Vector3( w, -h, -d),
+                        new THREE.Vector3(-w,  h,  d), new THREE.Vector3(-w,  h, -d),
+                        new THREE.Vector3(-w, -h,  d), new THREE.Vector3(-w, -h, -d)
+                    ];
+
+                    let minX = Infinity, maxX = -Infinity;
+                    let minY = Infinity, maxY = -Infinity;
+
+                    // 各頂点をスクリーン座標(px)に変換
+                    corners.forEach(v => {
+                        // ローカル -> ワールド
+                        v.applyMatrix4(mesh.matrixWorld);
+                        // ワールド -> スクリーン(NDC)
+                        v.project(this.camera);
+
+                        // NDC(-1~1) -> ピクセル座標
+                        const px = (v.x * .5 + .5) * window.innerWidth;
+                        const py = (-(v.y * .5) + .5) * window.innerHeight; // Yは反転
+
+                        if (px < minX) minX = px;
+                        if (px > maxX) maxX = px;
+                        if (py < minY) minY = py;
+                        if (py > maxY) maxY = py;
+                    });
+
+                    // 判定エリアを少し広げる（タッチしやすくする）
+                    const padding = 20; 
+                    minX -= padding; maxX += padding;
+                    minY -= padding; maxY += padding;
+
+                    // 範囲チェック
+                    return (touchX >= minX && touchX <= maxX && touchY >= minY && touchY <= maxY);
+                };
+
 
                 this.reset = () => {
                     this.isActive = false;
@@ -201,29 +251,15 @@
                     if (!this.hitBoxMesh) return;
 
                     const touch = e.touches[0];
-                    const canvas = this.el.sceneEl.canvas;
-                    if (!canvas) return;
-
-                    // --- 【重要修正】キャンバス基準の座標計算 ---
-                    const rect = canvas.getBoundingClientRect();
-                    this.mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
-                    this.mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
-
-                    // デバッグログ: 座標が正しい範囲(-1〜1)か確認
-                    // log(`X:${this.mouse.x.toFixed(2)} Y:${this.mouse.y.toFixed(2)}`);
-
-                    this.hitBoxMesh.updateMatrixWorld(); 
-                    this.raycaster.setFromCamera(this.mouse, this.camera);
                     
-                    const intersects = this.raycaster.intersectObject(this.hitBoxMesh, false);
-
-                    if (intersects.length > 0) {
+                    // Raycasterを使わず、スクリーン投影判定を使用
+                    if (this.isTouchInsideBox(touch.clientX, touch.clientY)) {
                         if (e.cancelable) e.preventDefault();
                         this.isActive = true;
                         
-                        // 当たったら「緑」にする
+                        // 緑色にする
                         this.hitBoxMesh.material.color.set(0x00ff00);
-                        log("TOUCHED! (Green)");
+                        log("TOUCHED! (Screen Check)");
 
                         if (e.touches.length === 1) {
                             this.mode = 'move';
@@ -235,9 +271,6 @@
                             this.startMidX = getMidX(e.touches[0], e.touches[1]);
                             this.startRotationY = this.el.object3D.rotation.y;
                         }
-                    } else {
-                        // ハズレた場合
-                        // log("Miss...");
                     }
                 }, { passive: false });
 
@@ -285,9 +318,7 @@
                     if (e.touches.length === 0) {
                         this.isActive = false;
                         this.mode = 'none';
-                        // 離したら赤に戻す
                         if(this.hitBoxMesh) this.hitBoxMesh.material.color.set(0xff0000);
-                        log("Released");
                     }
                 };
                 window.addEventListener('touchend', endAction);
@@ -318,20 +349,23 @@
                 this.box2.setFromObject(mesh2);
 
                 if (this.box1.intersectsBox(this.box2)) { 
-                    document.getElementById('status-text').innerText = "HIT !!";
-                    document.getElementById('status-text').style.color = "#FF3333";
+                    const status = document.getElementById('status-text');
+                    if(!status.innerText.includes("HIT")) {
+                        status.innerText += "\n[ HIT !! ]";
+                    }
+                    status.style.color = "#FF3333";
+
                     const modelEntity = w2.querySelector('a-entity[gltf-model]');
                     if(modelEntity) modelEntity.object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
                 } else {
-                    // HITでないときは、通常のログ表示エリアとして使うため上書きしない
-                    // (ログ機能とバッティングするため、ここではHIT時のみ強調する形にします)
                     const status = document.getElementById('status-text');
-                    if (status.innerText.includes("HIT !!")) {
-                        status.innerText = "Ready";
-                        status.style.color = "#00FF00";
-                        const modelEntity = w2.querySelector('a-entity[gltf-model]');
-                        if(modelEntity) modelEntity.object3D.rotation.z = 0;
+                    status.style.color = "#00FF00";
+                    if(status.innerText.includes("HIT")) {
+                        status.innerText = status.innerText.replace("\n[ HIT !! ]", "");
                     }
+                    
+                    const modelEntity = w2.querySelector('a-entity[gltf-model]');
+                    if(modelEntity) modelEntity.object3D.rotation.z = 0;
                 }
             }
         });
