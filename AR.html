@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Reliable Touch + Rotation</title>
+    <title>AR Shape Exact Match</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
 
@@ -18,7 +18,7 @@
         .a-canvas {
             background-color: transparent !important;
             display: block !important;
-            z-index: 10 !important; /* キャンバスを確実に手前に */
+            z-index: 10 !important;
         }
         #arjs-video {
             z-index: 1 !important; position: fixed !important;
@@ -86,8 +86,6 @@
             // スケール・回転リセット
             acorn.object3D.scale.set(1, 1, 1);
             pain.object3D.scale.set(1, 1, 1);
-            
-            // 回転もリセットしたい場合は以下を追加
             acorn.object3D.rotation.set(0, 0, 0); 
             pain.object3D.rotation.set(0, 0, 0);
 
@@ -100,7 +98,7 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 改良版ドラッグ＆回転コンポーネント ---
+        // --- ドラッグ＆回転コンポーネント ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isActive = false;
@@ -110,14 +108,11 @@
                 this.mouse = new THREE.Vector2();
                 this.camera = null;
 
-                // スケール計算用
                 this.startDistance = 0;
                 this.baseScale = new THREE.Vector3();
-
-                // 【追加】回転計算用
                 this.startMidX = 0;
                 this.startRotationY = 0;
-                this.rotationSpeed = 0.01; // 回転の感度
+                this.rotationSpeed = 0.01;
 
                 // 座標変換用
                 const isPortrait = window.innerHeight > window.innerWidth;
@@ -125,19 +120,16 @@
                 this.yFactor = isPortrait ? 4.0 : 3.0;
                 this.fingerOffsetY = 0.8; 
 
-                // 2点間の距離
                 const getDistance = (t1, t2) => {
                     const dx = t1.pageX - t2.pageX;
                     const dy = t1.pageY - t2.pageY;
                     return Math.sqrt(dx * dx + dy * dy);
                 };
 
-                // 2点間の中心X座標
                 const getMidX = (t1, t2) => {
                     return (t1.clientX + t2.clientX) / 2;
                 };
 
-                // 移動関数
                 const moveToFinger = (cx, cy) => {
                     const sx = (cx / window.innerWidth) * 2 - 1;
                     const sy = -(cy / window.innerHeight) * 2 + 1;
@@ -162,26 +154,23 @@
                     this.mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
 
                     this.raycaster.setFromCamera(this.mouse, this.camera);
+                    
+                    // Sphereを削除したため、GLTFモデル（Mesh）に直接当たる必要がある
+                    // recursive: true で子要素のMeshを探す
                     const intersects = this.raycaster.intersectObject(this.el.object3D, true);
 
                     if (intersects.length > 0) {
                         if (e.cancelable) e.preventDefault();
                         this.isActive = true;
 
-                        // 1本指なら移動モード
                         if (e.touches.length === 1) {
                             this.mode = 'move';
                             moveToFinger(touch.clientX, touch.clientY);
                         }
-                        // 2本指スタートなら拡大・回転モード準備
                         else if (e.touches.length === 2) {
                             this.mode = 'scale_rotate';
-                            
-                            // スケール初期値
                             this.startDistance = getDistance(e.touches[0], e.touches[1]);
                             this.baseScale.copy(this.el.object3D.scale);
-
-                            // 回転初期値
                             this.startMidX = getMidX(e.touches[0], e.touches[1]);
                             this.startRotationY = this.el.object3D.rotation.y;
                         }
@@ -195,12 +184,10 @@
 
                     const touches = e.touches;
 
-                    // --- 2本指：拡大縮小 ＋ 回転 ---
                     if (touches.length === 2) {
                         const currentDist = getDistance(touches[0], touches[1]);
                         const currentMidX = getMidX(touches[0], touches[1]);
 
-                        // 途中から指が増えた場合の初期化
                         if (this.mode !== 'scale_rotate') {
                             this.mode = 'scale_rotate';
                             this.startDistance = currentDist;
@@ -210,23 +197,19 @@
                             return; 
                         }
 
-                        // --- A. スケール処理 ---
+                        // A. スケール
                         if (this.startDistance > 0) {
                             const ratio = currentDist / this.startDistance;
                             let newScale = this.baseScale.x * ratio;
-                            // 制限
                             if (newScale < 0.1) newScale = 0.1;
                             if (newScale > 5.0) newScale = 5.0;
                             this.el.object3D.scale.set(newScale, newScale, newScale);
                         }
 
-                        // --- B. 回転処理（横スクロール） ---
+                        // B. 回転（横移動）
                         const deltaX = currentMidX - this.startMidX;
-                        // 横移動量(px) × 感度 を現在の角度に加算
                         this.el.object3D.rotation.y = this.startRotationY + (deltaX * this.rotationSpeed);
                     }
-                    
-                    // --- 1本指：移動 ---
                     else if (touches.length === 1) {
                         this.mode = 'move';
                         const t = touches[0];
@@ -248,19 +231,29 @@
             }
         });
 
-        // --- 衝突判定 ---
+        // --- 形状に合わせた衝突判定 (AABB) ---
         AFRAME.registerComponent('collision-check', {
+            init: function () {
+                // パフォーマンスのためBoxオブジェクトは使い回す
+                this.box1 = new THREE.Box3();
+                this.box2 = new THREE.Box3();
+            },
             tick: function () {
                 const w1 = document.querySelector('#wrapper-acorn');
                 const w2 = document.querySelector('#wrapper-pain');
                 if (!w1 || !w2) return;
 
-                const dist = w1.object3D.position.distanceTo(w2.object3D.position);
+                // オブジェクトの現在のスケール・回転・位置に基づいた
+                // 正確なバウンディングボックス（AABB）を計算
+                this.box1.setFromObject(w1.object3D);
+                this.box2.setFromObject(w2.object3D);
 
-                if (dist < 1.3) { 
+                // ボックス同士が重なっているか判定
+                const isHit = this.box1.intersectsBox(this.box2);
+
+                if (isHit) { 
                     document.getElementById('status-text').innerText = "HIT !!";
                     document.getElementById('status-text').style.color = "#FF3333";
-                    // 衝突時のアニメーション
                     w2.querySelector('a-entity[gltf-model]').object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
                 } else {
                     document.getElementById('status-text').innerText = "1 Finger: Move / 2 Fingers: Scale & Rotate";
@@ -289,12 +282,10 @@
         <a-entity light="type: directional; intensity: 1.0; position: 1 2 1;"></a-entity>
 
         <a-entity id="wrapper-acorn" position="-0.4 1.6 -3.0" drag-wrapper>
-            <a-sphere radius="1.2" material="opacity: 0.0; transparent: true"></a-sphere>
             <a-entity gltf-model="url(acorn.glb)" scale="12 12 12" position="0 -0.5 0"></a-entity>
         </a-entity>
 
         <a-entity id="wrapper-pain" position="0.4 1.6 -3.0" drag-wrapper>
-            <a-sphere radius="1.2" material="opacity: 0.0; transparent: true"></a-sphere>
             <a-entity gltf-model="url(pain.glb)" scale="0.012 0.012 0.012" position="0 -0.5 0"></a-entity>
         </a-entity>
 
