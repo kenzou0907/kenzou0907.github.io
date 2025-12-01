@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Visual Hit Test</title>
+    <title>AR Relative Move</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
 
@@ -25,7 +25,6 @@
             display: block !important; object-fit: cover !important;
         }
         
-        /* UI類 */
         #launcher {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 99999;
@@ -33,7 +32,7 @@
         }
         #launch-btn {
             padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
-            background: blue; border: none; border-radius: 50px; cursor: pointer;
+            background: #00C853; border: none; border-radius: 50px; cursor: pointer;
         }
         #reset-btn {
             position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
@@ -105,7 +104,7 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 画面投影方式による判定コンポーネント ---
+        // --- 相対移動 & スクリーン判定コンポーネント ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isActive = false;
@@ -113,21 +112,25 @@
                 this.hitBoxMesh = null;
                 this.camera = null;
 
-                // 操作変数
+                // --- 移動計算用変数 ---
+                this.startFingerX = 0;
+                this.startFingerY = 0;
+                this.startObjPos = new THREE.Vector3();
+
+                // --- 回転・拡大用変数 ---
                 this.startDistance = 0;
                 this.baseScale = new THREE.Vector3();
                 this.startMidX = 0;
                 this.startRotationY = 0;
                 this.rotationSpeed = 0.01;
 
-                const isPortrait = window.innerHeight > window.innerWidth;
-                this.xFactor = isPortrait ? 2.5 : 4.0; 
-                this.yFactor = isPortrait ? 4.0 : 3.0;
-                this.fingerOffsetY = 0.8; 
+                // 感度調整（相対移動用）
+                // 値が大きいほど指の動きに対して大きく動く
+                this.moveSpeed = 0.003; 
 
                 // モデル読み込み完了イベント
                 this.el.addEventListener('model-loaded', () => {
-                    log("Model loaded. Waiting...");
+                    log("Model loaded. Preparing HitBox...");
                     setTimeout(() => this.createHitBox(), 500);
                 });
 
@@ -150,16 +153,16 @@
                         return;
                     }
 
-                    // 少し余裕を持たせたサイズ (1.3倍)
+                    // 判定範囲を少し大きく(1.3倍)
                     const geometry = new THREE.BoxGeometry(size.x * 1.3, size.y * 1.3, size.z * 1.3);
                     
-                    // 赤い箱（最初は見える状態で）
+                    // ※ 完成版なので透明にします (opacity: 0)
                     const material = new THREE.MeshBasicMaterial({
                         color: 0xff0000, 
-                        opacity: 0.4,       
+                        opacity: 0.0,       // 透明！
                         transparent: true,
-                        visible: true,
-                        depthTest: false // 常に手前に表示させる（デバッグしやすくする）
+                        visible: true,      // 存在はさせる
+                        depthTest: false
                     });
                     
                     this.hitBoxMesh = new THREE.Mesh(geometry, material);
@@ -170,11 +173,10 @@
                     this.hitBoxMesh.position.copy(localCenter);
 
                     this.el.object3D.add(this.hitBoxMesh);
-                    log("HitBox Created!");
+                    log("HitBox Ready (Invisible)");
                 };
 
-                // --- 2Dスクリーン判定ロジック ---
-                // 3Dの箱の角を画面上の(x,y)に変換し、その範囲内に指があるかを調べる
+                // --- スクリーン判定 (前回と同じロジック) ---
                 this.isTouchInsideBox = (touchX, touchY) => {
                     if (!this.hitBoxMesh || !this.camera) return false;
 
@@ -182,9 +184,7 @@
                     mesh.updateMatrixWorld();
                     this.camera.updateMatrixWorld();
 
-                    // 箱の8つの角のローカル座標
                     const geo = mesh.geometry;
-                    // BoxGeometryはパラメータから幅・高さ・奥行きがわかる
                     const w = geo.parameters.width / 2;
                     const h = geo.parameters.height / 2;
                     const d = geo.parameters.depth / 2;
@@ -199,29 +199,19 @@
                     let minX = Infinity, maxX = -Infinity;
                     let minY = Infinity, maxY = -Infinity;
 
-                    // 各頂点をスクリーン座標(px)に変換
                     corners.forEach(v => {
-                        // ローカル -> ワールド
                         v.applyMatrix4(mesh.matrixWorld);
-                        // ワールド -> スクリーン(NDC)
                         v.project(this.camera);
-
-                        // NDC(-1~1) -> ピクセル座標
                         const px = (v.x * .5 + .5) * window.innerWidth;
-                        const py = (-(v.y * .5) + .5) * window.innerHeight; // Yは反転
-
-                        if (px < minX) minX = px;
-                        if (px > maxX) maxX = px;
-                        if (py < minY) minY = py;
-                        if (py > maxY) maxY = py;
+                        const py = (-(v.y * .5) + .5) * window.innerHeight;
+                        if (px < minX) minX = px; if (px > maxX) maxX = px;
+                        if (py < minY) minY = py; if (py > maxY) maxY = py;
                     });
 
-                    // 判定エリアを少し広げる（タッチしやすくする）
-                    const padding = 20; 
+                    const padding = 30; // 判定余裕
                     minX -= padding; maxX += padding;
                     minY -= padding; maxY += padding;
 
-                    // 範囲チェック
                     return (touchX >= minX && touchX <= maxX && touchY >= minY && touchY <= maxY);
                 };
 
@@ -229,7 +219,7 @@
                 this.reset = () => {
                     this.isActive = false;
                     this.mode = 'none';
-                    if(this.hitBoxMesh) this.hitBoxMesh.material.color.set(0xff0000);
+                    if(this.hitBoxMesh) this.hitBoxMesh.material.opacity = 0.0;
                 };
 
                 const getDistance = (t1, t2) => {
@@ -238,12 +228,6 @@
                     return Math.sqrt(dx * dx + dy * dy);
                 };
                 const getMidX = (t1, t2) => { return (t1.clientX + t2.clientX) / 2; };
-                const moveToFinger = (cx, cy) => {
-                    const sx = (cx / window.innerWidth) * 2 - 1;
-                    const sy = -(cy / window.innerHeight) * 2 + 1;
-                    this.el.object3D.position.x = sx * this.xFactor;
-                    this.el.object3D.position.y = (sy * this.yFactor) + 1.6 + this.fingerOffsetY;
-                };
 
                 // --- タッチ開始 ---
                 window.addEventListener('touchstart', (e) => {
@@ -252,18 +236,22 @@
 
                     const touch = e.touches[0];
                     
-                    // Raycasterを使わず、スクリーン投影判定を使用
                     if (this.isTouchInsideBox(touch.clientX, touch.clientY)) {
                         if (e.cancelable) e.preventDefault();
                         this.isActive = true;
                         
-                        // 緑色にする
-                        this.hitBoxMesh.material.color.set(0x00ff00);
-                        log("TOUCHED! (Screen Check)");
+                        // 掴んでる間だけ赤く薄く表示（フィードバック）
+                        this.hitBoxMesh.material.opacity = 0.3;
+                        log("Grabbed!");
 
                         if (e.touches.length === 1) {
                             this.mode = 'move';
-                            moveToFinger(touch.clientX, touch.clientY);
+                            
+                            // ★重要★ スタート時の位置を記録（相対移動のため）
+                            this.startFingerX = touch.clientX;
+                            this.startFingerY = touch.clientY;
+                            this.startObjPos.copy(this.el.object3D.position);
+
                         } else if (e.touches.length === 2) {
                             this.mode = 'scale_rotate';
                             this.startDistance = getDistance(e.touches[0], e.touches[1]);
@@ -274,14 +262,14 @@
                     }
                 }, { passive: false });
 
+                // --- タッチ移動 ---
                 window.addEventListener('touchmove', (e) => {
                     if (!this.isActive) return;
                     if (e.cancelable) e.preventDefault();
                     
-                    this.hitBoxMesh.material.color.set(0x00ff00);
-
                     const touches = e.touches;
 
+                    // --- 2本指：拡大縮小・回転 ---
                     if (touches.length === 2) {
                         const currentDist = getDistance(touches[0], touches[1]);
                         const currentMidX = getMidX(touches[0], touches[1]);
@@ -306,10 +294,26 @@
                         const deltaX = currentMidX - this.startMidX;
                         this.el.object3D.rotation.y = this.startRotationY + (deltaX * this.rotationSpeed);
                     }
+                    // --- 1本指：移動（相対移動ロジックに変更） ---
                     else if (touches.length === 1) {
-                        this.mode = 'move';
+                        if (this.mode !== 'move') {
+                            // 途中から1本指になった場合の再初期化
+                            this.mode = 'move';
+                            this.startFingerX = touches[0].clientX;
+                            this.startFingerY = touches[0].clientY;
+                            this.startObjPos.copy(this.el.object3D.position);
+                            return;
+                        }
+
                         const t = touches[0];
-                        moveToFinger(t.clientX, t.clientY);
+                        // 指の移動量(delta)を計算
+                        const dx = t.clientX - this.startFingerX;
+                        const dy = t.clientY - this.startFingerY;
+
+                        // 移動量をオブジェクトの初期位置に加算
+                        // 画面Y座標は下がプラス、3D空間Y座標は上がプラスなので dy は引く
+                        this.el.object3D.position.x = this.startObjPos.x + (dx * this.moveSpeed);
+                        this.el.object3D.position.y = this.startObjPos.y - (dy * this.moveSpeed);
                     }
                 }, { passive: false });
 
@@ -318,7 +322,8 @@
                     if (e.touches.length === 0) {
                         this.isActive = false;
                         this.mode = 'none';
-                        if(this.hitBoxMesh) this.hitBoxMesh.material.color.set(0xff0000);
+                        // 離したら透明に戻す
+                        if(this.hitBoxMesh) this.hitBoxMesh.material.opacity = 0.0;
                     }
                 };
                 window.addEventListener('touchend', endAction);
