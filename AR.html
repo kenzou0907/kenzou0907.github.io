@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Auto HitBox</title>
+    <title>AR Invisible HitBox Control</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
 
@@ -31,7 +31,7 @@
         }
         #launch-btn {
             padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
-            background: blue; border: none; border-radius: 50px; cursor: pointer;
+            background: #00C853; border: none; border-radius: 50px; cursor: pointer;
         }
         #reset-btn {
             position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
@@ -49,21 +49,9 @@
             color: yellow; font-weight: bold; font-size: 22px;
             text-shadow: 2px 2px 4px black; pointer-events: none; z-index: 9000;
         }
-        /* デバッグメッセージ */
-        #debug-log {
-            position: fixed; top: 80px; left: 10px; width: 300px;
-            color: #00FF00; font-size: 12px; pointer-events: none; z-index: 9000;
-            white-space: pre-wrap;
-        }
     </style>
 
     <script>
-        function log(msg) {
-            const el = document.getElementById('debug-log');
-            if(el) el.innerText = msg + "\n" + el.innerText;
-            console.log(msg);
-        }
-
         function startCamera() {
             document.getElementById('launch-btn').innerText = "Starting...";
             setTimeout(() => {
@@ -96,8 +84,6 @@
 
             if(acorn.components['drag-wrapper']) acorn.components['drag-wrapper'].reset();
             if(pain.components['drag-wrapper']) pain.components['drag-wrapper'].reset();
-            
-            log("Positions Reset");
         }
 
         function forceTransparent() {
@@ -105,12 +91,12 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 自動ヒットボックス生成 & 操作コンポーネント ---
+        // --- 透明なヒットボックス操作コンポーネント ---
         AFRAME.registerComponent('drag-wrapper', {
             init: function () {
                 this.isActive = false;
                 this.mode = 'none';
-                this.hitBoxMesh = null; // 生成する当たり判定用ボックス
+                this.hitBoxMesh = null;
 
                 this.raycaster = new THREE.Raycaster();
                 this.mouse = new THREE.Vector2();
@@ -123,34 +109,30 @@
                 this.startRotationY = 0;
                 this.rotationSpeed = 0.01;
 
-                // 座標変換係数
                 const isPortrait = window.innerHeight > window.innerWidth;
                 this.xFactor = isPortrait ? 2.5 : 4.0; 
                 this.yFactor = isPortrait ? 4.0 : 3.0;
                 this.fingerOffsetY = 0.8; 
 
-                // --- 重要: モデル読み込み待ち ---
+                // モデル読み込み完了を待つ
                 this.el.addEventListener('model-loaded', () => {
                     this.createHitBox();
                 });
-                
-                // すでに読み込まれている場合の保険
+                // 保険
                 setTimeout(() => {
                     if (!this.hitBoxMesh && this.el.getObject3D('mesh')) {
                         this.createHitBox();
                     }
                 }, 2000);
 
-                // 関数: ヒットボックス生成
+                // --- 透明な箱を作る関数 ---
                 this.createHitBox = () => {
-                    if (this.hitBoxMesh) return; // 作成済みなら何もしない
+                    if (this.hitBoxMesh) return;
 
                     const obj = this.el.object3D;
-                    // バウンディングボックス計算（モデルのサイズを測る）
                     const box = new THREE.Box3().setFromObject(obj);
                     
                     if (box.isEmpty()) {
-                        log("Model empty, retrying...");
                         setTimeout(this.createHitBox, 1000);
                         return;
                     }
@@ -160,34 +142,23 @@
                     const center = new THREE.Vector3();
                     box.getCenter(center);
 
-                    // 親要素(this.el)の座標系に合わせるための調整
-                    // このボックスを this.el の子として追加する
-                    // 親のスケールが1以外だとサイズが狂うので、親の逆スケールを掛けるなどの工夫が必要だが
-                    // 今回はWrapper(親)はScale(1,1,1)前提で、子がScaleされているため、
-                    // Box3の結果（ワールドサイズ）を使って、Wrapper直下に置くと合うはず
-
-                    // デバッグ用：赤い半透明の箱を作成
-                    // ★完成したら visible: false にしてください
+                    // --- ここがポイント: 透明マテリアル ---
                     const geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
                     const material = new THREE.MeshBasicMaterial({
                         color: 0xff0000, 
-                        opacity: 0.3, 
-                        transparent: true,
-                        wireframe: true,
-                        visible: true // ← 【重要】ここを false にすると消えます
+                        opacity: 0.0,      // ← 0.0で完全透明にする
+                        transparent: true, // ← 透明処理を有効化
+                        visible: true      // ← visible: true にしないとRaycasterが当たらない
                     });
                     
                     this.hitBoxMesh = new THREE.Mesh(geometry, material);
                     
-                    // 中心位置の補正（親要素の中心からのずれ）
-                    // Box3のcenterはワールド座標なので、親のワールド座標を引く
+                    // 位置補正
                     const parentPos = new THREE.Vector3();
                     this.el.object3D.getWorldPosition(parentPos);
                     this.hitBoxMesh.position.copy(center).sub(parentPos);
 
-                    // シーンに追加
                     this.el.object3D.add(this.hitBoxMesh);
-                    log("HitBox Created! Size: " + size.x.toFixed(2));
                 };
 
                 this.reset = () => {
@@ -195,7 +166,6 @@
                     this.mode = 'none';
                 };
 
-                // ヘルパー関数
                 const getDistance = (t1, t2) => {
                     const dx = t1.pageX - t2.pageX;
                     const dy = t1.pageY - t2.pageY;
@@ -209,27 +179,25 @@
                     this.el.object3D.position.y = (sy * this.yFactor) + 1.6 + this.fingerOffsetY;
                 };
 
-                // --- タッチイベント ---
+                // --- タッチ開始 ---
                 window.addEventListener('touchstart', (e) => {
                     if (!this.camera) this.camera = this.el.sceneEl.camera;
-                    if (!this.hitBoxMesh) return; // 箱ができてなければ無視
+                    if (!this.hitBoxMesh) return;
 
                     const touch = e.touches[0];
                     this.mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
                     this.mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
 
-                    // 座標更新
+                    // 当たり判定の座標更新
                     this.hitBoxMesh.updateMatrixWorld(); 
-                    
                     this.raycaster.setFromCamera(this.mouse, this.camera);
                     
-                    // 【重要】生成した「箱」に対して当たり判定を行う
+                    // 透明な箱に当たったかチェック
                     const intersects = this.raycaster.intersectObject(this.hitBoxMesh, false);
 
                     if (intersects.length > 0) {
                         if (e.cancelable) e.preventDefault();
                         this.isActive = true;
-                        log("Touched!");
 
                         if (e.touches.length === 1) {
                             this.mode = 'move';
@@ -244,6 +212,7 @@
                     }
                 }, { passive: false });
 
+                // --- タッチ移動 ---
                 window.addEventListener('touchmove', (e) => {
                     if (!this.isActive) return;
                     if (e.cancelable) e.preventDefault();
@@ -263,6 +232,7 @@
                             return; 
                         }
 
+                        // スケール
                         if (this.startDistance > 0) {
                             const ratio = currentDist / this.startDistance;
                             let newScale = this.baseScale.x * ratio;
@@ -271,6 +241,7 @@
                             this.el.object3D.scale.set(newScale, newScale, newScale);
                         }
 
+                        // 回転
                         const deltaX = currentMidX - this.startMidX;
                         this.el.object3D.rotation.y = this.startRotationY + (deltaX * this.rotationSpeed);
                     }
@@ -286,7 +257,6 @@
                     if (e.touches.length === 0) {
                         this.isActive = false;
                         this.mode = 'none';
-                        log("Released");
                     }
                 };
                 window.addEventListener('touchend', endAction);
@@ -305,11 +275,10 @@
                 const w2 = document.querySelector('#wrapper-pain');
                 if (!w1 || !w2) return;
 
-                // HitBoxができているか確認
                 const mesh1 = w1.components['drag-wrapper'] ? w1.components['drag-wrapper'].hitBoxMesh : null;
                 const mesh2 = w2.components['drag-wrapper'] ? w2.components['drag-wrapper'].hitBoxMesh : null;
 
-                if (!mesh1 || !mesh2) return; // まだロード中
+                if (!mesh1 || !mesh2) return;
 
                 mesh1.updateMatrixWorld();
                 mesh2.updateMatrixWorld();
@@ -323,7 +292,7 @@
                     const modelEntity = w2.querySelector('a-entity[gltf-model]');
                     if(modelEntity) modelEntity.object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
                 } else {
-                    document.getElementById('status-text').innerText = "Active";
+                    document.getElementById('status-text').innerText = "1 Finger: Move / 2 Fingers: Scale & Rotate";
                     document.getElementById('status-text').style.color = "yellow";
                     const modelEntity = w2.querySelector('a-entity[gltf-model]');
                     if(modelEntity) modelEntity.object3D.rotation.z = 0;
@@ -338,7 +307,6 @@
     <button id="reset-btn" onclick="resetPositions()">RESET POSITION</button>
     <button id="fix-bg-btn" onclick="forceTransparent()">Fix BG</button>
     <div id="status-text">Waiting...</div>
-    <div id="debug-log">Log initialized...</div>
 
     <a-scene embedded
         arjs="sourceType: webcam; debugUIEnabled: false;"
