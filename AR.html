@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Relative Move</title>
+    <title>AR Min Nijo</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
 
@@ -32,7 +32,7 @@
         }
         #launch-btn {
             padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
-            background: #00C853; border: none; border-radius: 50px; cursor: pointer;
+            background: blue; border: none; border-radius: 50px; cursor: pointer;
         }
         #reset-btn {
             position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
@@ -77,19 +77,21 @@
         function resetPositions() {
             const camera = document.querySelector('[camera]');
             const acorn = document.getElementById('wrapper-acorn');
-            const pain = document.getElementById('wrapper-pain');
+            const pain = document.getElementById('wrapper-pain'); // 変数名はpainのままでもIDが同じなら動きます
             
             const cameraPos = camera.object3D.position;
             const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.object3D.quaternion).multiplyScalar(2.5);
             const centerPos = cameraPos.clone().add(forward);
             const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.object3D.quaternion);
             
-            const offset = 0.4;
+            const offset = 0.6; // 少し間隔を広げました
             acorn.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(-offset)));
             pain.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(offset)));
 
-            acorn.object3D.scale.set(1, 1, 1);
-            pain.object3D.scale.set(1, 1, 1);
+            // リセット時のスケール（ここもモデルに合わせて調整が必要かもしれません）
+            acorn.object3D.scale.set(1, 1, 1); // acornの初期スケール(HTML側と合わせる)
+            pain.object3D.scale.set(0.5, 0.5, 0.5); // min_nijoの初期スケール
+            
             acorn.object3D.rotation.set(0, 0, 0); 
             pain.object3D.rotation.set(0, 0, 0);
 
@@ -124,8 +126,6 @@
                 this.startRotationY = 0;
                 this.rotationSpeed = 0.01;
 
-                // 感度調整（相対移動用）
-                // 値が大きいほど指の動きに対して大きく動く
                 this.moveSpeed = 0.003; 
 
                 // モデル読み込み完了イベント
@@ -153,15 +153,14 @@
                         return;
                     }
 
-                    // 判定範囲を少し大きく(1.3倍)
+                    // 判定範囲
                     const geometry = new THREE.BoxGeometry(size.x * 1.3, size.y * 1.3, size.z * 1.3);
                     
-                    // ※ 完成版なので透明にします (opacity: 0)
                     const material = new THREE.MeshBasicMaterial({
                         color: 0xff0000, 
-                        opacity: 0.0,       // 透明！
+                        opacity: 0.0,       // 透明
                         transparent: true,
-                        visible: true,      // 存在はさせる
+                        visible: true,
                         depthTest: false
                     });
                     
@@ -176,7 +175,7 @@
                     log("HitBox Ready (Invisible)");
                 };
 
-                // --- スクリーン判定 (前回と同じロジック) ---
+                // スクリーン判定
                 this.isTouchInsideBox = (touchX, touchY) => {
                     if (!this.hitBoxMesh || !this.camera) return false;
 
@@ -215,7 +214,6 @@
                     return (touchX >= minX && touchX <= maxX && touchY >= minY && touchY <= maxY);
                 };
 
-
                 this.reset = () => {
                     this.isActive = false;
                     this.mode = 'none';
@@ -240,14 +238,11 @@
                         if (e.cancelable) e.preventDefault();
                         this.isActive = true;
                         
-                        // 掴んでる間だけ赤く薄く表示（フィードバック）
                         this.hitBoxMesh.material.opacity = 0.3;
                         log("Grabbed!");
 
                         if (e.touches.length === 1) {
                             this.mode = 'move';
-                            
-                            // ★重要★ スタート時の位置を記録（相対移動のため）
                             this.startFingerX = touch.clientX;
                             this.startFingerY = touch.clientY;
                             this.startObjPos.copy(this.el.object3D.position);
@@ -269,7 +264,6 @@
                     
                     const touches = e.touches;
 
-                    // --- 2本指：拡大縮小・回転 ---
                     if (touches.length === 2) {
                         const currentDist = getDistance(touches[0], touches[1]);
                         const currentMidX = getMidX(touches[0], touches[1]);
@@ -294,10 +288,8 @@
                         const deltaX = currentMidX - this.startMidX;
                         this.el.object3D.rotation.y = this.startRotationY + (deltaX * this.rotationSpeed);
                     }
-                    // --- 1本指：移動（相対移動ロジックに変更） ---
                     else if (touches.length === 1) {
                         if (this.mode !== 'move') {
-                            // 途中から1本指になった場合の再初期化
                             this.mode = 'move';
                             this.startFingerX = touches[0].clientX;
                             this.startFingerY = touches[0].clientY;
@@ -306,12 +298,9 @@
                         }
 
                         const t = touches[0];
-                        // 指の移動量(delta)を計算
                         const dx = t.clientX - this.startFingerX;
                         const dy = t.clientY - this.startFingerY;
 
-                        // 移動量をオブジェクトの初期位置に加算
-                        // 画面Y座標は下がプラス、3D空間Y座標は上がプラスなので dy は引く
                         this.el.object3D.position.x = this.startObjPos.x + (dx * this.moveSpeed);
                         this.el.object3D.position.y = this.startObjPos.y - (dy * this.moveSpeed);
                     }
@@ -322,7 +311,6 @@
                     if (e.touches.length === 0) {
                         this.isActive = false;
                         this.mode = 'none';
-                        // 離したら透明に戻す
                         if(this.hitBoxMesh) this.hitBoxMesh.material.opacity = 0.0;
                     }
                 };
@@ -398,7 +386,7 @@
         </a-entity>
 
         <a-entity id="wrapper-pain" position="0.4 1.6 -3.0" drag-wrapper>
-            <a-entity gltf-model="url(pain.glb)" scale="0.012 0.012 0.012" position="0 -0.5 0"></a-entity>
+            <a-entity gltf-model="url(min_nijo.glb)" scale="0.5 0.5 0.5" position="0 -0.5 0"></a-entity>
         </a-entity>
 
     </a-scene>
