@@ -137,7 +137,7 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 修正版：縦画面対応の撮影コンポーネント ---
+        // --- 修正版：歪まない画像保存コンポーネント ---
         AFRAME.registerComponent('photo-capture', {
             init: function() {
                 this.captureRequested = false;
@@ -159,15 +159,13 @@
                 }
 
                 try {
-                    // 撮影時のフラッシュ効果
                     const shutterBtn = document.getElementById('shutter-btn');
                     const originalBg = shutterBtn.style.background;
                     shutterBtn.style.background = "white";
                     setTimeout(() => { shutterBtn.style.background = originalBg; }, 100);
                     log("Capturing...");
 
-                    // 【重要】出力サイズを「現在の画面サイズ（ウィンドウ）」に合わせる
-                    // これによりスマホ縦持ちなら縦長の画像が生成されます
+                    // 1. 保存画像のサイズ設定（現在のウィンドウ解像度）
                     const destW = window.innerWidth * window.devicePixelRatio;
                     const destH = window.innerHeight * window.devicePixelRatio;
 
@@ -176,39 +174,29 @@
                     combinedCanvas.height = destH;
                     const ctx = combinedCanvas.getContext('2d');
 
-                    // --- 1. カメラ映像のトリミングと描画 ---
-                    // カメラ映像(video)と出力(dest)の比率を計算して、真ん中を切り抜く
+                    // 2. 背景（カメラ映像）の描画
+                    // 歪みを防ぐため、比率を維持したまま拡大して中央に配置する
                     const vidW = video.videoWidth;
                     const vidH = video.videoHeight;
                     
-                    const destAspect = destW / destH;
-                    const vidAspect = vidW / vidH;
+                    // 画面を埋めるための拡大率を計算 (object-fit: cover と同じ計算)
+                    const scale = Math.max(destW / vidW, destH / vidH);
+                    
+                    const scaledW = vidW * scale;
+                    const scaledH = vidH * scale;
 
-                    let sx, sy, sw, sh;
+                    // 中央寄せのためのオフセット計算
+                    const offsetX = (destW - scaledW) / 2;
+                    const offsetY = (destH - scaledH) / 2;
 
-                    if (vidAspect > destAspect) {
-                        // 映像の方が横に長い（スマホ縦持ちの場合ここに来る）
-                        // 高さを合わせて左右をカット
-                        sh = vidH;
-                        sw = vidH * destAspect;
-                        sx = (vidW - sw) / 2;
-                        sy = 0;
-                    } else {
-                        // 映像の方が縦に長い（稀なケースだが対応）
-                        sw = vidW;
-                        sh = vidW / destAspect;
-                        sx = 0;
-                        sy = (vidH - sh) / 2;
-                    }
+                    // カメラ映像を描画
+                    ctx.drawImage(video, offsetX, offsetY, scaledW, scaledH);
 
-                    // 切り抜いた映像を描画
-                    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, destW, destH);
-
-                    // --- 2. 3Dシーンの描画 ---
-                    // 3Dキャンバスの内容を画面サイズいっぱいに重ねる
+                    // 3. 3Dシーンの描画
+                    // 3Dキャンバスは既に画面サイズになっているので、そのまま重ねるだけでOK
                     ctx.drawImage(sceneCanvas, 0, 0, destW, destH);
 
-                    // 画像保存
+                    // 4. 画像保存
                     const dataURL = combinedCanvas.toDataURL("image/jpeg", 0.9);
                     const link = document.createElement('a');
                     const timestamp = new Date().toISOString().slice(0,19).replace(/[-T:]/g,'');
