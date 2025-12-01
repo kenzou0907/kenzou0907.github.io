@@ -32,7 +32,7 @@
         }
         #launch-btn {
             padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
-            background: #00C853; border: none; border-radius: 50px; cursor: pointer;
+            background: blue; border: none; border-radius: 50px; cursor: pointer;
         }
 
         #reset-btn {
@@ -97,10 +97,8 @@
             }, 500);
         }
 
-        // --- 修正版：写真撮影トリガー関数 ---
         function takePhoto() {
             const scene = document.querySelector('a-scene');
-            // photo-captureコンポーネントに撮影をリクエストする
             if (scene.components['photo-capture']) {
                 scene.components['photo-capture'].requestCapture();
             } else {
@@ -139,7 +137,7 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 新規追加：確実に描画直後にキャプチャするためのコンポーネント ---
+        // --- 修正版：確実に描画後にキャプチャするためのコンポーネント ---
         AFRAME.registerComponent('photo-capture', {
             init: function() {
                 this.captureRequested = false;
@@ -147,12 +145,11 @@
             requestCapture: function() {
                 this.captureRequested = true;
             },
-            tick: function() {
+            // 【重要】tickではなくtockを使用する（tockは描画ループの直後に実行されるため、画面に絵がある状態）
+            tock: function() {
                 if (!this.captureRequested) return;
-                // フラグを即座に下ろす
                 this.captureRequested = false;
 
-                // ここで描画処理を行う（tick内なのでオブジェクトは描画済み）
                 const scene = this.el;
                 const video = document.getElementById('arjs-video');
                 const sceneCanvas = scene.renderer.domElement;
@@ -163,7 +160,7 @@
                 }
 
                 try {
-                    // 撮影時の視覚効果
+                    // 撮影時のフラッシュ効果
                     const shutterBtn = document.getElementById('shutter-btn');
                     const originalBg = shutterBtn.style.background;
                     shutterBtn.style.background = "white";
@@ -172,17 +169,24 @@
 
                     // 合成用キャンバス
                     const combinedCanvas = document.createElement('canvas');
-                    combinedCanvas.width = video.videoWidth;
-                    combinedCanvas.height = video.videoHeight;
+                    
+                    // 【修正】出力サイズを3Dモデルのキャンバス（画面サイズ）に合わせることで、見た目通りの配置にする
+                    const width = sceneCanvas.width;
+                    const height = sceneCanvas.height;
+                    
+                    combinedCanvas.width = width;
+                    combinedCanvas.height = height;
+                    
                     const ctx = combinedCanvas.getContext('2d');
 
-                    // 1. カメラ映像を描画
-                    ctx.drawImage(video, 0, 0, combinedCanvas.width, combinedCanvas.height);
+                    // 1. カメラ映像を描画（画面サイズいっぱいに引き伸ばす）
+                    // ※AR.jsは基本的にvideoを画面いっぱいに広げているため、単純なストレッチで位置関係は概ね合います
+                    ctx.drawImage(video, 0, 0, width, height);
 
-                    // 2. 3Dシーンを描画（このタイミングなら確実に中身がある）
-                    ctx.drawImage(sceneCanvas, 0, 0, combinedCanvas.width, combinedCanvas.height);
+                    // 2. 3Dシーンを描画（tock内なので確実に描画済みデータがある）
+                    ctx.drawImage(sceneCanvas, 0, 0, width, height);
 
-                    // 画像データ化とダウンロード
+                    // 画像保存
                     const dataURL = combinedCanvas.toDataURL("image/jpeg", 0.9);
                     const link = document.createElement('a');
                     const timestamp = new Date().toISOString().slice(0,19).replace(/[-T:]/g,'');
