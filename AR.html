@@ -32,7 +32,7 @@
         }
         #launch-btn {
             padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
-            background: blue; border: none; border-radius: 50px; cursor: pointer;
+            background: #00C853; border: none; border-radius: 50px; cursor: pointer;
         }
 
         #reset-btn {
@@ -137,7 +137,7 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 修正版：確実に描画後にキャプチャするためのコンポーネント ---
+        // --- 修正版：縦画面対応の撮影コンポーネント ---
         AFRAME.registerComponent('photo-capture', {
             init: function() {
                 this.captureRequested = false;
@@ -145,7 +145,6 @@
             requestCapture: function() {
                 this.captureRequested = true;
             },
-            // 【重要】tickではなくtockを使用する（tockは描画ループの直後に実行されるため、画面に絵がある状態）
             tock: function() {
                 if (!this.captureRequested) return;
                 this.captureRequested = false;
@@ -167,24 +166,47 @@
                     setTimeout(() => { shutterBtn.style.background = originalBg; }, 100);
                     log("Capturing...");
 
-                    // 合成用キャンバス
+                    // 【重要】出力サイズを「現在の画面サイズ（ウィンドウ）」に合わせる
+                    // これによりスマホ縦持ちなら縦長の画像が生成されます
+                    const destW = window.innerWidth * window.devicePixelRatio;
+                    const destH = window.innerHeight * window.devicePixelRatio;
+
                     const combinedCanvas = document.createElement('canvas');
-                    
-                    // 【修正】出力サイズを3Dモデルのキャンバス（画面サイズ）に合わせることで、見た目通りの配置にする
-                    const width = sceneCanvas.width;
-                    const height = sceneCanvas.height;
-                    
-                    combinedCanvas.width = width;
-                    combinedCanvas.height = height;
-                    
+                    combinedCanvas.width = destW;
+                    combinedCanvas.height = destH;
                     const ctx = combinedCanvas.getContext('2d');
 
-                    // 1. カメラ映像を描画（画面サイズいっぱいに引き伸ばす）
-                    // ※AR.jsは基本的にvideoを画面いっぱいに広げているため、単純なストレッチで位置関係は概ね合います
-                    ctx.drawImage(video, 0, 0, width, height);
+                    // --- 1. カメラ映像のトリミングと描画 ---
+                    // カメラ映像(video)と出力(dest)の比率を計算して、真ん中を切り抜く
+                    const vidW = video.videoWidth;
+                    const vidH = video.videoHeight;
+                    
+                    const destAspect = destW / destH;
+                    const vidAspect = vidW / vidH;
 
-                    // 2. 3Dシーンを描画（tock内なので確実に描画済みデータがある）
-                    ctx.drawImage(sceneCanvas, 0, 0, width, height);
+                    let sx, sy, sw, sh;
+
+                    if (vidAspect > destAspect) {
+                        // 映像の方が横に長い（スマホ縦持ちの場合ここに来る）
+                        // 高さを合わせて左右をカット
+                        sh = vidH;
+                        sw = vidH * destAspect;
+                        sx = (vidW - sw) / 2;
+                        sy = 0;
+                    } else {
+                        // 映像の方が縦に長い（稀なケースだが対応）
+                        sw = vidW;
+                        sh = vidW / destAspect;
+                        sx = 0;
+                        sy = (vidH - sh) / 2;
+                    }
+
+                    // 切り抜いた映像を描画
+                    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, destW, destH);
+
+                    // --- 2. 3Dシーンの描画 ---
+                    // 3Dキャンバスの内容を画面サイズいっぱいに重ねる
+                    ctx.drawImage(sceneCanvas, 0, 0, destW, destH);
 
                     // 画像保存
                     const dataURL = combinedCanvas.toDataURL("image/jpeg", 0.9);
