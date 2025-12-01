@@ -32,7 +32,7 @@
         }
         #launch-btn {
             padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
-            background: blue; border: none; border-radius: 50px; cursor: pointer;
+            background: #00C853; border: none; border-radius: 50px; cursor: pointer;
         }
 
         #reset-btn {
@@ -137,7 +137,7 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 修正版：歪まない画像保存コンポーネント ---
+        // --- 修正版：3Dモデルの歪みを防ぐ撮影コンポーネント ---
         AFRAME.registerComponent('photo-capture', {
             init: function() {
                 this.captureRequested = false;
@@ -174,27 +174,31 @@
                     combinedCanvas.height = destH;
                     const ctx = combinedCanvas.getContext('2d');
 
+                    // --- 共通の描画関数: アスペクト比を維持して中央配置（Cover） ---
+                    const drawAspectFill = (image, context, dW, dH) => {
+                        const imgW = image.width || image.videoWidth;
+                        const imgH = image.height || image.videoHeight;
+                        
+                        // 画面を埋めるための拡大率を計算 (object-fit: cover)
+                        const scale = Math.max(dW / imgW, dH / imgH);
+                        
+                        const scaledW = imgW * scale;
+                        const scaledH = imgH * scale;
+
+                        // 中央寄せのためのオフセット計算
+                        const offsetX = (dW - scaledW) / 2;
+                        const offsetY = (dH - scaledH) / 2;
+
+                        context.drawImage(image, offsetX, offsetY, scaledW, scaledH);
+                    };
+
                     // 2. 背景（カメラ映像）の描画
-                    // 歪みを防ぐため、比率を維持したまま拡大して中央に配置する
-                    const vidW = video.videoWidth;
-                    const vidH = video.videoHeight;
-                    
-                    // 画面を埋めるための拡大率を計算 (object-fit: cover と同じ計算)
-                    const scale = Math.max(destW / vidW, destH / vidH);
-                    
-                    const scaledW = vidW * scale;
-                    const scaledH = vidH * scale;
-
-                    // 中央寄せのためのオフセット計算
-                    const offsetX = (destW - scaledW) / 2;
-                    const offsetY = (destH - scaledH) / 2;
-
-                    // カメラ映像を描画
-                    ctx.drawImage(video, offsetX, offsetY, scaledW, scaledH);
+                    drawAspectFill(video, ctx, destW, destH);
 
                     // 3. 3Dシーンの描画
-                    // 3Dキャンバスは既に画面サイズになっているので、そのまま重ねるだけでOK
-                    ctx.drawImage(sceneCanvas, 0, 0, destW, destH);
+                    // 【修正点】Canvasもそのまま貼り付けるのではなく、同じ計算式で中央配置する
+                    // これにより、Canvasの元のアスペクト比が維持され、はみ出た左右がカットされる形になる
+                    drawAspectFill(sceneCanvas, ctx, destW, destH);
 
                     // 4. 画像保存
                     const dataURL = combinedCanvas.toDataURL("image/jpeg", 0.9);
