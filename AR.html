@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Min Nijo</title>
+    <title>AR Min Nijo (iOS Compatible)</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
 
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/3.3.2/aframe/build/aframe-ar.js"></script>
@@ -32,7 +33,8 @@
         }
         #launch-btn {
             padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
-            background: blue; border: none; border-radius: 50px; cursor: pointer;
+            background: greenyellow; border: none; border-radius: 50px; cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
         }
 
         #reset-btn {
@@ -44,6 +46,7 @@
             background: rgba(0, 122, 255, 0.9);
             color: white; border: 2px solid white; border-radius: 40px;
             font-size: 16px; font-weight: bold; cursor: pointer; display: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
         #fix-bg-btn {
@@ -62,6 +65,7 @@
             color: white; border: 3px solid white; border-radius: 50px;
             font-size: 20px; font-weight: bold; cursor: pointer; display: none;
             box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            -webkit-tap-highlight-color: transparent;
         }
         
         #status-text {
@@ -83,19 +87,48 @@
             console.log(msg);
         }
 
+        // ---【ここを修正しました】iOS対応のカメラ開始処理 ---
         function startCamera() {
-            document.getElementById('launch-btn').innerText = "Starting...";
-            setTimeout(() => {
-                document.getElementById('launcher').style.display = 'none';
-                document.getElementById('reset-btn').style.display = 'block';
-                document.getElementById('fix-bg-btn').style.display = 'block';
-                document.getElementById('shutter-btn').style.display = 'block';
-                
-                document.querySelector('a-scene').play();
-                window.isARStarted = true;
-                setTimeout(resetPositions, 1000);
-            }, 500);
+            // 実際の起動処理を関数化
+            const runAR = () => {
+                document.getElementById('launch-btn').innerText = "Starting...";
+                setTimeout(() => {
+                    document.getElementById('launcher').style.display = 'none';
+                    document.getElementById('reset-btn').style.display = 'block';
+                    document.getElementById('fix-bg-btn').style.display = 'block';
+                    document.getElementById('shutter-btn').style.display = 'block';
+                    
+                    const scene = document.querySelector('a-scene');
+                    if(scene) scene.play();
+                    
+                    window.isARStarted = true;
+                    setTimeout(resetPositions, 1000);
+                }, 500);
+            };
+
+            // iOS 13+ の許可リクエスト処理
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response === 'granted') {
+                            log("Sensor Permission: Granted");
+                            runAR();
+                        } else {
+                            alert('ARを利用するにはセンサーの許可が必要です。\nページをリロードして再度試してください。');
+                            log("Sensor Permission: Denied");
+                        }
+                    })
+                    .catch(e => {
+                        console.error(e);
+                        alert('Error requesting permission: ' + e);
+                    });
+            } else {
+                // iOS 13未満、またはAndroid/PCの場合
+                log("Non-iOS 13+ device detected.");
+                runAR();
+            }
         }
+        // ----------------------------------------------------
 
         function takePhoto() {
             const scene = document.querySelector('a-scene');
@@ -108,16 +141,18 @@
 
         function resetPositions() {
             const camera = document.querySelector('[camera]');
-            // ドングリの参照を削除し、二条城のみ取得
             const nijo = document.getElementById('wrapper-nijo');
             
+            if(!camera || !nijo) return;
+
             const cameraPos = camera.object3D.position;
+            // カメラの向きに合わせて前方を計算
             const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.object3D.quaternion).multiplyScalar(2.5);
+            // 高さ（Y軸）の影響を少し抑えたい場合は forward.y を0にする等の調整も可能ですが、今回はそのまま
+            
             const centerPos = cameraPos.clone().add(forward);
             
-            // オフセット計算を削除し、中央に配置
             nijo.object3D.position.copy(centerPos);
-
             nijo.object3D.scale.set(0.5, 0.5, 0.5);
             nijo.object3D.rotation.set(0, 0, 0);
 
@@ -217,7 +252,6 @@
                 this.startMidX = 0;
                 this.startRotationY = 0;
                 this.rotationSpeed = 0.01;
-
                 this.moveSpeed = 0.003; 
 
                 this.el.addEventListener('model-loaded', () => {
@@ -407,8 +441,6 @@
                 window.addEventListener('touchcancel', endAction);
             }
         });
-
-        /* collision-check コンポーネントは削除しました */
 
     </script>
 </head>
