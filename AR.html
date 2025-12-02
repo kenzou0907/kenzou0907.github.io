@@ -108,28 +108,22 @@
 
         function resetPositions() {
             const camera = document.querySelector('[camera]');
-            const acorn = document.getElementById('wrapper-acorn');
+            // ドングリの参照を削除し、二条城のみ取得
             const nijo = document.getElementById('wrapper-nijo');
             
             const cameraPos = camera.object3D.position;
             const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.object3D.quaternion).multiplyScalar(2.5);
             const centerPos = cameraPos.clone().add(forward);
-            const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.object3D.quaternion);
             
-            const offset = 0.6;
-            acorn.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(-offset)));
-            nijo.object3D.position.copy(centerPos.clone().add(right.clone().multiplyScalar(offset)));
+            // オフセット計算を削除し、中央に配置
+            nijo.object3D.position.copy(centerPos);
 
-            acorn.object3D.scale.set(1, 1, 1);
             nijo.object3D.scale.set(0.5, 0.5, 0.5);
-            
-            acorn.object3D.rotation.set(0, 0, 0); 
             nijo.object3D.rotation.set(0, 0, 0);
 
-            if(acorn.components['drag-wrapper']) acorn.components['drag-wrapper'].reset();
             if(nijo.components['drag-wrapper']) nijo.components['drag-wrapper'].reset();
             
-            log("Positions Reset");
+            log("Position Reset");
         }
 
         function forceTransparent() {
@@ -137,7 +131,6 @@
             document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
-        // --- 修正版：3Dモデルの歪みを防ぐ撮影コンポーネント ---
         AFRAME.registerComponent('photo-capture', {
             init: function() {
                 this.captureRequested = false;
@@ -165,7 +158,6 @@
                     setTimeout(() => { shutterBtn.style.background = originalBg; }, 100);
                     log("Capturing...");
 
-                    // 1. 保存画像のサイズ設定（現在のウィンドウ解像度）
                     const destW = window.innerWidth * window.devicePixelRatio;
                     const destH = window.innerHeight * window.devicePixelRatio;
 
@@ -174,33 +166,23 @@
                     combinedCanvas.height = destH;
                     const ctx = combinedCanvas.getContext('2d');
 
-                    // --- 共通の描画関数: アスペクト比を維持して中央配置（Cover） ---
                     const drawAspectFill = (image, context, dW, dH) => {
                         const imgW = image.width || image.videoWidth;
                         const imgH = image.height || image.videoHeight;
                         
-                        // 画面を埋めるための拡大率を計算 (object-fit: cover)
                         const scale = Math.max(dW / imgW, dH / imgH);
-                        
                         const scaledW = imgW * scale;
                         const scaledH = imgH * scale;
 
-                        // 中央寄せのためのオフセット計算
                         const offsetX = (dW - scaledW) / 2;
                         const offsetY = (dH - scaledH) / 2;
 
                         context.drawImage(image, offsetX, offsetY, scaledW, scaledH);
                     };
 
-                    // 2. 背景（カメラ映像）の描画
                     drawAspectFill(video, ctx, destW, destH);
-
-                    // 3. 3Dシーンの描画
-                    // 【修正点】Canvasもそのまま貼り付けるのではなく、同じ計算式で中央配置する
-                    // これにより、Canvasの元のアスペクト比が維持され、はみ出た左右がカットされる形になる
                     drawAspectFill(sceneCanvas, ctx, destW, destH);
 
-                    // 4. 画像保存
                     const dataURL = combinedCanvas.toDataURL("image/jpeg", 0.9);
                     const link = document.createElement('a');
                     const timestamp = new Date().toISOString().slice(0,19).replace(/[-T:]/g,'');
@@ -426,48 +408,8 @@
             }
         });
 
-        AFRAME.registerComponent('collision-check', {
-            init: function () {
-                this.box1 = new THREE.Box3();
-                this.box2 = new THREE.Box3();
-            },
-            tick: function () {
-                const w1 = document.querySelector('#wrapper-acorn');
-                const w2 = document.querySelector('#wrapper-nijo');
-                if (!w1 || !w2) return;
+        /* collision-check コンポーネントは削除しました */
 
-                const mesh1 = w1.components['drag-wrapper'] ? w1.components['drag-wrapper'].hitBoxMesh : null;
-                const mesh2 = w2.components['drag-wrapper'] ? w2.components['drag-wrapper'].hitBoxMesh : null;
-
-                if (!mesh1 || !mesh2) return;
-
-                mesh1.updateMatrixWorld();
-                mesh2.updateMatrixWorld();
-
-                this.box1.setFromObject(mesh1);
-                this.box2.setFromObject(mesh2);
-
-                if (this.box1.intersectsBox(this.box2)) { 
-                    const status = document.getElementById('status-text');
-                    if(!status.innerText.includes("HIT")) {
-                        status.innerText += "\n[ HIT !! ]";
-                    }
-                    status.style.color = "#FF3333";
-
-                    const modelEntity = w2.querySelector('a-entity[gltf-model]');
-                    if(modelEntity) modelEntity.object3D.rotation.z = Math.sin(Date.now() / 50) * 0.3;
-                } else {
-                    const status = document.getElementById('status-text');
-                    status.style.color = "#00FF00";
-                    if(status.innerText.includes("HIT")) {
-                        status.innerText = status.innerText.replace("\n[ HIT !! ]", "");
-                    }
-                    
-                    const modelEntity = w2.querySelector('a-entity[gltf-model]');
-                    if(modelEntity) modelEntity.object3D.rotation.z = 0;
-                }
-            }
-        });
     </script>
 </head>
 
@@ -484,18 +426,13 @@
         arjs="sourceType: webcam; debugUIEnabled: false;"
         renderer="logarithmicDepthBuffer: true; colorManagement: true; alpha: true; preserveDrawingBuffer: true;"
         vr-mode-ui="enabled: false"
-        collision-check
         photo-capture>
 
         <a-entity camera position="0 1.6 0"></a-entity>
         <a-entity light="type: ambient; intensity: 1.0; color: #fff;"></a-entity>
         <a-entity light="type: directional; intensity: 1.0; position: 1 2 1;"></a-entity>
 
-        <a-entity id="wrapper-acorn" position="-0.4 1.6 -3.0" drag-wrapper>
-            <a-entity gltf-model="url(acorn.glb)" scale="12 12 12" position="0 -0.5 0"></a-entity>
-        </a-entity>
-
-        <a-entity id="wrapper-nijo" position="0.4 1.6 -3.0" drag-wrapper>
+        <a-entity id="wrapper-nijo" position="0.0 1.6 -3.0" drag-wrapper>
             <a-entity gltf-model="url(min_nijo.glb)" scale="0.5 0.5 0.5" position="0 -0.5 0"></a-entity>
         </a-entity>
 
