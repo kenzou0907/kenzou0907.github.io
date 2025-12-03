@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Min Nijo (Menu & Log)</title>
+    <title>AR Min Nijo (Final with Button Help)</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -49,7 +49,7 @@
 
         #launch-btn {
             padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
-            background: blue; border: none; border-radius: 50px; cursor: pointer;
+            background: #00FF00; border: none; border-radius: 50px; cursor: pointer;
             -webkit-tap-highlight-color: transparent;
             box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
         }
@@ -108,7 +108,7 @@
         }
 
         .menu-content {
-            padding: 15px; min-height: 100px; max-height: 200px;
+            padding: 15px; min-height: 100px; max-height: 250px;
             overflow-y: auto; white-space: pre-wrap; line-height: 1.5;
         }
         
@@ -132,7 +132,8 @@
                 menu: "メニュー",
                 tabLog: "ログ",
                 tabHelp: "操作方法",
-                helpText: "【操作方法】\n・1本指ドラッグ： 移動\n・2本指ピンチ： 拡大・縮小\n・2本指回転： 回転",
+                // 【修正点】ボタンの説明を追加
+                helpText: "【操作方法】\n・1本指ドラッグ： 移動\n・2本指ピンチ： 拡大・縮小\n・2本指回転： 回転\n\n【ボタン】\n・リセット： 位置を初期に戻す\n・撮影： 写真を保存",
                 permissionTitle: "ARを利用するにはセンサーの許可が必要です。\nページをリロードして再度試してください。",
                 permissionError: "権限エラー: ",
                 photoSaved: "写真を保存しました！",
@@ -150,7 +151,8 @@
                 menu: "MENU",
                 tabLog: "Log",
                 tabHelp: "Help",
-                helpText: "[How to Use]\n- 1 Finger Drag: Move\n- 2 Finger Pinch: Scale\n- 2 Finger Rotate: Rotate",
+                // 【修正点】ボタンの説明を追加
+                helpText: "[Gestures]\n- 1 Finger Drag: Move\n- 2 Finger Pinch: Scale\n- 2 Finger Rotate: Rotate\n\n[Buttons]\n- RESET: Reset Position\n- TAKE PHOTO: Save Photo",
                 permissionTitle: "Sensor permission is required for AR.\nPlease reload and try again.",
                 permissionError: "Permission Error: ",
                 photoSaved: "Photo saved!",
@@ -168,7 +170,8 @@
                 menu: "菜单",
                 tabLog: "日志",
                 tabHelp: "操作说明",
-                helpText: "【操作说明】\n- 单指拖动：移动\n- 双指捏合：缩放\n- 双指旋转：旋转",
+                // 【修正点】ボタンの説明を追加
+                helpText: "【手势操作】\n- 单指拖动：移动\n- 双指捏合：缩放\n- 双指旋转：旋转\n\n【按钮说明】\n- 重置：重置位置\n- 拍照：保存照片",
                 permissionTitle: "AR需要传感器权限。\n请刷新页面重试。",
                 permissionError: "权限错误: ",
                 photoSaved: "照片已保存！",
@@ -186,7 +189,8 @@
                 menu: "메뉴",
                 tabLog: "로그",
                 tabHelp: "조작 방법",
-                helpText: "[조작 방법]\n- 한 손가락 드래그: 이동\n- 두 손가락 핀치: 확대/축소\n- 두 손가락 회전: 회전",
+                // 【修正点】ボタンの説明を追加
+                helpText: "[제스처]\n- 한 손가락 드래그: 이동\n- 두 손가락 핀치: 확대/축소\n- 두 손가락 회전: 회전\n\n[버튼]\n- 초기화: 위치 초기화\n- 촬영: 사진 저장",
                 permissionTitle: "AR을 사용하려면 센서 권한이 필요합니다.\n페이지를 새로고침하여 다시 시도해주세요.",
                 permissionError: "권한 오류: ",
                 photoSaved: "사진이 저장되었습니다!",
@@ -198,22 +202,18 @@
             }
         };
 
-        // ログ機能：コンソールに出しつつ、メニュー内のログ領域に追記する
         function log(msg) {
             console.log(msg);
             const logDiv = document.getElementById('content-log');
             if(logDiv) {
-                // 新しいログを上に追加
                 const time = new Date().toLocaleTimeString().split(' ')[0];
                 logDiv.innerText = `[${time}] ${msg}\n` + logDiv.innerText;
-                // ログが長くなりすぎないように制限（任意）
                 if(logDiv.innerText.length > 2000) {
                     logDiv.innerText = logDiv.innerText.substring(0, 2000);
                 }
             }
         }
 
-        // 言語設定
         function setLanguage(lang) {
             currentLang = lang;
             const t = translations[lang];
@@ -222,13 +222,11 @@
             document.getElementById('reset-btn').innerText = t.reset;
             document.getElementById('shutter-btn').innerText = t.shutter;
             
-            // メニュー周りのテキスト更新
             document.getElementById('menu-btn').innerText = t.menu;
             document.getElementById('tab-btn-log').innerText = t.tabLog;
             document.getElementById('tab-btn-help').innerText = t.tabHelp;
             document.getElementById('content-help').innerText = t.helpText;
             
-            // ログの初期メッセージ（まだAR開始前なら）
             if(!window.isARStarted) {
                 const logDiv = document.getElementById('content-log');
                 if(logDiv) logDiv.innerText = t.init + "\n";
@@ -240,27 +238,22 @@
             document.getElementById('btn-' + lang).classList.add('active');
         }
 
-        // メニュー開閉
         function toggleMenu() {
             const panel = document.getElementById('menu-panel');
             if (panel.style.display === 'block') {
                 panel.style.display = 'none';
             } else {
                 panel.style.display = 'block';
-                // デフォルトでログタブを開く（初回のみ）
                 if (!document.querySelector('.tab-btn.active')) {
                     switchTab('log');
                 }
             }
         }
 
-        // タブ切り替え
         function switchTab(tabName) {
-            // ボタンの見た目
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.getElementById('tab-btn-' + tabName).classList.add('active');
 
-            // コンテンツの表示切替
             document.getElementById('content-log').classList.remove('show');
             document.getElementById('content-help').classList.remove('show');
             
@@ -273,7 +266,6 @@
                 document.getElementById('launch-btn').innerText = t.starting;
                 setTimeout(() => {
                     document.getElementById('launcher').style.display = 'none';
-                    // AR開始後に各種ボタンを表示
                     document.getElementById('reset-btn').style.display = 'block';
                     document.getElementById('shutter-btn').style.display = 'block';
                     document.getElementById('menu-container').style.display = 'block';
@@ -511,7 +503,6 @@
                     if (!window.isARStarted) return;
 
                     // ボタンやメニューパネルへのタッチ時はAR操作を無効化
-                    // buttonタグ、または menu-panel 内部へのタッチを検出
                     if (e.target.tagName === 'BUTTON' || e.target.closest('button') || e.target.closest('#menu-panel')) {
                         return;
                     }
@@ -603,7 +594,7 @@
 
         window.addEventListener('DOMContentLoaded', () => {
             setLanguage('ja');
-            switchTab('log'); // 初期タブ設定
+            switchTab('log'); 
         });
 
     </script>
