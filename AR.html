@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Min Nijo (Final)</title>
+    <title>AR Min Nijo (Menu & Log)</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -27,6 +27,7 @@
             display: block !important; object-fit: cover !important;
         }
         
+        /* --- 起動画面 --- */
         #launcher {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 99999;
@@ -39,36 +40,24 @@
             gap: 15px;
         }
         .lang-btn {
-            background: transparent;
-            border: 2px solid white;
-            color: white;
-            padding: 10px 15px;
-            border-radius: 8px;
-            font-size: 14px;
-            cursor: pointer;
+            background: transparent; border: 2px solid white; color: white;
+            padding: 10px 15px; border-radius: 8px; font-size: 14px; cursor: pointer;
         }
         .lang-btn.active {
-            background: #00FF00;
-            color: black;
-            border-color: #00FF00;
-            font-weight: bold;
+            background: #00FF00; color: black; border-color: #00FF00; font-weight: bold;
         }
 
         #launch-btn {
             padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
-            background: #00FF00; border: none; border-radius: 50px; cursor: pointer;
+            background: blue; border: none; border-radius: 50px; cursor: pointer;
             -webkit-tap-highlight-color: transparent;
             box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
         }
 
-        /* UIボタン */
+        /* --- メインUIボタン --- */
         #reset-btn {
-            position: fixed; 
-            top: 20px; 
-            right: 20px;
-            z-index: 99999; 
-            padding: 10px 30px;
-            background: rgba(0, 122, 255, 0.9);
+            position: fixed; top: 20px; right: 20px; z-index: 99999; 
+            padding: 10px 30px; background: rgba(0, 122, 255, 0.9);
             color: white; border: 2px solid white; border-radius: 40px;
             font-size: 16px; font-weight: bold; cursor: pointer; display: none;
             -webkit-tap-highlight-color: transparent;
@@ -83,15 +72,51 @@
             box-shadow: 0 4px 10px rgba(0,0,0,0.3);
             -webkit-tap-highlight-color: transparent;
         }
-        
-        #status-text {
-            position: fixed; top: 10px; left: 10px; width: 300px;
-            color: #00FF00; font-weight: bold; font-size: 14px;
-            text-shadow: 1px 1px 2px black; pointer-events: none; z-index: 9000;
-            white-space: pre-wrap;
-            background: rgba(0,0,0,0.6);
-            padding: 5px; border-radius: 5px;
+
+        /* --- メニュー関連スタイル --- */
+        #menu-container {
+            position: fixed; top: 20px; left: 20px; z-index: 99999;
+            display: none; /* 初期状態は非表示（カメラ開始後に表示） */
         }
+        
+        #menu-btn {
+            background: rgba(0, 0, 0, 0.7); color: white;
+            border: 2px solid white; border-radius: 8px;
+            padding: 10px 20px; font-size: 16px; font-weight: bold;
+            cursor: pointer; -webkit-tap-highlight-color: transparent;
+        }
+
+        #menu-panel {
+            margin-top: 10px; width: 280px;
+            background: rgba(0, 0, 0, 0.85);
+            border: 1px solid #555; border-radius: 8px;
+            overflow: hidden; display: none; /* 初期は閉じてる */
+            color: white; font-size: 14px;
+        }
+
+        .menu-tabs {
+            display: flex; border-bottom: 1px solid #555;
+        }
+        .tab-btn {
+            flex: 1; background: transparent; border: none;
+            color: #aaa; padding: 10px; cursor: pointer;
+            font-weight: bold; border-right: 1px solid #555;
+        }
+        .tab-btn:last-child { border-right: none; }
+        .tab-btn.active {
+            background: #333; color: #00FF00;
+        }
+
+        .menu-content {
+            padding: 15px; min-height: 100px; max-height: 200px;
+            overflow-y: auto; white-space: pre-wrap; line-height: 1.5;
+        }
+        
+        /* ログと説明文の切り替え用 */
+        #content-log { display: none; font-family: monospace; font-size: 12px; }
+        #content-help { display: none; }
+        .show { display: block !important; }
+
     </style>
 
     <script>
@@ -104,6 +129,10 @@
                 starting: "起動中...",
                 reset: "リセット",
                 shutter: "撮影",
+                menu: "メニュー",
+                tabLog: "ログ",
+                tabHelp: "操作方法",
+                helpText: "【操作方法】\n・1本指ドラッグ： 移動\n・2本指ピンチ： 拡大・縮小\n・2本指回転： 回転",
                 permissionTitle: "ARを利用するにはセンサーの許可が必要です。\nページをリロードして再度試してください。",
                 permissionError: "権限エラー: ",
                 photoSaved: "写真を保存しました！",
@@ -118,6 +147,10 @@
                 starting: "Starting...",
                 reset: "RESET",
                 shutter: "TAKE PHOTO",
+                menu: "MENU",
+                tabLog: "Log",
+                tabHelp: "Help",
+                helpText: "[How to Use]\n- 1 Finger Drag: Move\n- 2 Finger Pinch: Scale\n- 2 Finger Rotate: Rotate",
                 permissionTitle: "Sensor permission is required for AR.\nPlease reload and try again.",
                 permissionError: "Permission Error: ",
                 photoSaved: "Photo saved!",
@@ -132,6 +165,10 @@
                 starting: "启动中...",
                 reset: "重置",
                 shutter: "拍照",
+                menu: "菜单",
+                tabLog: "日志",
+                tabHelp: "操作说明",
+                helpText: "【操作说明】\n- 单指拖动：移动\n- 双指捏合：缩放\n- 双指旋转：旋转",
                 permissionTitle: "AR需要传感器权限。\n请刷新页面重试。",
                 permissionError: "权限错误: ",
                 photoSaved: "照片已保存！",
@@ -146,6 +183,10 @@
                 starting: "시작 중...",
                 reset: "초기화",
                 shutter: "사진 촬영",
+                menu: "메뉴",
+                tabLog: "로그",
+                tabHelp: "조작 방법",
+                helpText: "[조작 방법]\n- 한 손가락 드래그: 이동\n- 두 손가락 핀치: 확대/축소\n- 두 손가락 회전: 회전",
                 permissionTitle: "AR을 사용하려면 센서 권한이 필요합니다.\n페이지를 새로고침하여 다시 시도해주세요.",
                 permissionError: "권한 오류: ",
                 photoSaved: "사진이 저장되었습니다!",
@@ -157,12 +198,22 @@
             }
         };
 
+        // ログ機能：コンソールに出しつつ、メニュー内のログ領域に追記する
         function log(msg) {
-            const el = document.getElementById('status-text');
-            if(el) el.innerText = msg + "\n" + el.innerText.split("\n").slice(0, 4).join("\n");
             console.log(msg);
+            const logDiv = document.getElementById('content-log');
+            if(logDiv) {
+                // 新しいログを上に追加
+                const time = new Date().toLocaleTimeString().split(' ')[0];
+                logDiv.innerText = `[${time}] ${msg}\n` + logDiv.innerText;
+                // ログが長くなりすぎないように制限（任意）
+                if(logDiv.innerText.length > 2000) {
+                    logDiv.innerText = logDiv.innerText.substring(0, 2000);
+                }
+            }
         }
 
+        // 言語設定
         function setLanguage(lang) {
             currentLang = lang;
             const t = translations[lang];
@@ -171,8 +222,16 @@
             document.getElementById('reset-btn').innerText = t.reset;
             document.getElementById('shutter-btn').innerText = t.shutter;
             
+            // メニュー周りのテキスト更新
+            document.getElementById('menu-btn').innerText = t.menu;
+            document.getElementById('tab-btn-log').innerText = t.tabLog;
+            document.getElementById('tab-btn-help').innerText = t.tabHelp;
+            document.getElementById('content-help').innerText = t.helpText;
+            
+            // ログの初期メッセージ（まだAR開始前なら）
             if(!window.isARStarted) {
-                document.getElementById('status-text').innerText = t.init;
+                const logDiv = document.getElementById('content-log');
+                if(logDiv) logDiv.innerText = t.init + "\n";
             }
 
             document.querySelectorAll('.lang-btn').forEach(btn => {
@@ -181,14 +240,43 @@
             document.getElementById('btn-' + lang).classList.add('active');
         }
 
+        // メニュー開閉
+        function toggleMenu() {
+            const panel = document.getElementById('menu-panel');
+            if (panel.style.display === 'block') {
+                panel.style.display = 'none';
+            } else {
+                panel.style.display = 'block';
+                // デフォルトでログタブを開く（初回のみ）
+                if (!document.querySelector('.tab-btn.active')) {
+                    switchTab('log');
+                }
+            }
+        }
+
+        // タブ切り替え
+        function switchTab(tabName) {
+            // ボタンの見た目
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('tab-btn-' + tabName).classList.add('active');
+
+            // コンテンツの表示切替
+            document.getElementById('content-log').classList.remove('show');
+            document.getElementById('content-help').classList.remove('show');
+            
+            document.getElementById('content-' + tabName).classList.add('show');
+        }
+
         function startCamera() {
             const t = translations[currentLang];
             const runAR = () => {
                 document.getElementById('launch-btn').innerText = t.starting;
                 setTimeout(() => {
                     document.getElementById('launcher').style.display = 'none';
+                    // AR開始後に各種ボタンを表示
                     document.getElementById('reset-btn').style.display = 'block';
                     document.getElementById('shutter-btn').style.display = 'block';
+                    document.getElementById('menu-container').style.display = 'block';
                     
                     const scene = document.querySelector('a-scene');
                     if(scene) scene.play();
@@ -422,7 +510,9 @@
                 window.addEventListener('touchstart', (e) => {
                     if (!window.isARStarted) return;
 
-                    if (e.target.tagName === 'BUTTON' || e.target.closest('button')) {
+                    // ボタンやメニューパネルへのタッチ時はAR操作を無効化
+                    // buttonタグ、または menu-panel 内部へのタッチを検出
+                    if (e.target.tagName === 'BUTTON' || e.target.closest('button') || e.target.closest('#menu-panel')) {
                         return;
                     }
 
@@ -513,6 +603,7 @@
 
         window.addEventListener('DOMContentLoaded', () => {
             setLanguage('ja');
+            switchTab('log'); // 初期タブ設定
         });
 
     </script>
@@ -526,14 +617,25 @@
             <button id="btn-zh" class="lang-btn" onclick="setLanguage('zh')">中文</button>
             <button id="btn-ko" class="lang-btn" onclick="setLanguage('ko')">한국어</button>
         </div>
-
         <button id="launch-btn" onclick="startCamera()">START CAMERA</button>
+    </div>
+    
+    <div id="menu-container">
+        <button id="menu-btn" onclick="toggleMenu()">MENU</button>
+        <div id="menu-panel">
+            <div class="menu-tabs">
+                <button id="tab-btn-log" class="tab-btn" onclick="switchTab('log')">ログ</button>
+                <button id="tab-btn-help" class="tab-btn" onclick="switchTab('help')">操作方法</button>
+            </div>
+            <div class="menu-content">
+                <div id="content-log" class="show"></div>
+                <div id="content-help"></div>
+            </div>
+        </div>
     </div>
     
     <button id="reset-btn" onclick="resetPositions()">RESET</button>
     <button id="shutter-btn" onclick="takePhoto()">TAKE PHOTO</button>
-
-    <div id="status-text">Initializing...</div>
 
     <a-scene embedded
         arjs="sourceType: webcam; debugUIEnabled: false;"
