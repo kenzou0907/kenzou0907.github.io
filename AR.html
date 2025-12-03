@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Min Nijo (Multi-Language)</title>
+    <title>AR Min Nijo (Multi-Language Fixed)</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -27,14 +27,12 @@
             display: block !important; object-fit: cover !important;
         }
         
-        /* ランチャー（起動画面）のスタイル */
         #launcher {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 99999;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
         }
 
-        /* 言語選択ボタンのコンテナ */
         #lang-container {
             margin-bottom: 40px;
             display: flex;
@@ -63,6 +61,7 @@
             box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
         }
 
+        /* UIボタンのz-indexを明示的に最前面へ */
         #reset-btn {
             position: fixed; 
             top: 20px; 
@@ -106,9 +105,8 @@
 
     <script>
         window.isARStarted = false;
-        let currentLang = 'ja'; // デフォルト言語
+        let currentLang = 'ja'; 
 
-        // --- 多言語データ ---
         const translations = {
             ja: {
                 start: "カメラ起動",
@@ -178,33 +176,27 @@
             console.log(msg);
         }
 
-        // --- 言語切り替え関数 ---
         function setLanguage(lang) {
             currentLang = lang;
             const t = translations[lang];
 
-            // UIテキスト更新
             document.getElementById('launch-btn').innerText = t.start;
             document.getElementById('reset-btn').innerText = t.reset;
             document.getElementById('shutter-btn').innerText = t.shutter;
             document.getElementById('fix-bg-btn').innerText = t.fixBg;
             
-            // ログの初期表示更新（まだAR開始前なら）
             if(!window.isARStarted) {
                 document.getElementById('status-text').innerText = t.init;
             }
 
-            // ボタンの見た目更新
             document.querySelectorAll('.lang-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
             document.getElementById('btn-' + lang).classList.add('active');
         }
 
-        // --- カメラ開始処理 ---
         function startCamera() {
             const t = translations[currentLang];
-
             const runAR = () => {
                 document.getElementById('launch-btn').innerText = t.starting;
                 setTimeout(() => {
@@ -221,7 +213,6 @@
                 }, 500);
             };
 
-            // iOS 13+ の許可リクエスト処理
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission()
                     .then(response => {
@@ -291,7 +282,7 @@
                 const scene = this.el;
                 const video = document.getElementById('arjs-video');
                 const sceneCanvas = scene.renderer.domElement;
-                const t = translations[currentLang]; // 現在の言語取得
+                const t = translations[currentLang];
 
                 if (!video || !sceneCanvas) {
                     log("Video or Canvas not ready.");
@@ -303,9 +294,6 @@
                     const originalBg = shutterBtn.style.background;
                     shutterBtn.style.background = "white";
                     setTimeout(() => { shutterBtn.style.background = originalBg; }, 100);
-                    
-                    // ログはシンプルに英語のままでもいいが、ここでは保存完了を通知
-                    // log("Capturing..."); 
 
                     const destW = window.innerWidth * window.devicePixelRatio;
                     const destH = window.innerHeight * window.devicePixelRatio;
@@ -342,7 +330,7 @@
                     link.click();
                     document.body.removeChild(link);
 
-                    log(t.photoSaved); // 言語対応メッセージ
+                    log(t.photoSaved);
                 } catch (e) {
                     log("Photo failed: " + e.message);
                     console.error(e);
@@ -453,6 +441,12 @@
 
                 window.addEventListener('touchstart', (e) => {
                     if (!window.isARStarted) return;
+
+                    // 【修正点】: タッチ対象がボタン(またはその内部要素)の場合は、オブジェクト操作を行わない
+                    if (e.target.tagName === 'BUTTON' || e.target.closest('button')) {
+                        return;
+                    }
+
                     if (!this.camera) this.camera = this.el.sceneEl.camera;
                     if (!this.hitBoxMesh) return;
 
@@ -462,7 +456,7 @@
                         this.isActive = true;
                         this.hitBoxMesh.material.opacity = 0.3;
                         
-                        log(translations[currentLang].grabbed); // 言語対応メッセージ
+                        log(translations[currentLang].grabbed);
 
                         if (e.touches.length === 1) {
                             this.mode = 'move';
@@ -538,7 +532,6 @@
             }
         });
 
-        // ページ読み込み完了時に日本語を初期設定
         window.addEventListener('DOMContentLoaded', () => {
             setLanguage('ja');
         });
