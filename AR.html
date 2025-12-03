@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Min Nijo (iOS Compatible)</title>
+    <title>AR Min Nijo (Multi-Language)</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -14,6 +14,7 @@
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden; background-color: transparent !important;
             touch-action: none; user-select: none; -webkit-user-select: none;
+            font-family: sans-serif;
         }
         .a-canvas {
             background-color: transparent !important;
@@ -26,15 +27,40 @@
             display: block !important; object-fit: cover !important;
         }
         
+        /* ランチャー（起動画面）のスタイル */
         #launcher {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 99999;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
         }
+
+        /* 言語選択ボタンのコンテナ */
+        #lang-container {
+            margin-bottom: 40px;
+            display: flex;
+            gap: 15px;
+        }
+        .lang-btn {
+            background: transparent;
+            border: 2px solid white;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .lang-btn.active {
+            background: #00FF00;
+            color: black;
+            border-color: #00FF00;
+            font-weight: bold;
+        }
+
         #launch-btn {
             padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
-            background: greenyellow; border: none; border-radius: 50px; cursor: pointer;
+            background: #00FF00; border: none; border-radius: 50px; cursor: pointer;
             -webkit-tap-highlight-color: transparent;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
         }
 
         #reset-btn {
@@ -80,6 +106,71 @@
 
     <script>
         window.isARStarted = false;
+        let currentLang = 'ja'; // デフォルト言語
+
+        // --- 多言語データ ---
+        const translations = {
+            ja: {
+                start: "カメラ起動",
+                starting: "起動中...",
+                reset: "リセット",
+                shutter: "撮影",
+                fixBg: "背景固定",
+                permissionTitle: "ARを利用するにはセンサーの許可が必要です。\nページをリロードして再度試してください。",
+                permissionError: "権限エラー: ",
+                photoSaved: "写真を保存しました！",
+                grabbed: "掴みました！",
+                init: "初期化中...",
+                permissionDenied: "センサー権限: 拒否",
+                permissionGranted: "センサー権限: 許可",
+                nonIOS: "iOS13+以外を検出"
+            },
+            en: {
+                start: "START CAMERA",
+                starting: "Starting...",
+                reset: "RESET",
+                shutter: "TAKE PHOTO",
+                fixBg: "Fix BG",
+                permissionTitle: "Sensor permission is required for AR.\nPlease reload and try again.",
+                permissionError: "Permission Error: ",
+                photoSaved: "Photo saved!",
+                grabbed: "Grabbed!",
+                init: "Initializing...",
+                permissionDenied: "Sensor Permission: Denied",
+                permissionGranted: "Sensor Permission: Granted",
+                nonIOS: "Non-iOS 13+ device detected."
+            },
+            zh: {
+                start: "启动相机",
+                starting: "启动中...",
+                reset: "重置",
+                shutter: "拍照",
+                fixBg: "固定背景",
+                permissionTitle: "AR需要传感器权限。\n请刷新页面重试。",
+                permissionError: "权限错误: ",
+                photoSaved: "照片已保存！",
+                grabbed: "已抓取！",
+                init: "正在初始化...",
+                permissionDenied: "传感器权限: 拒绝",
+                permissionGranted: "传感器权限: 允许",
+                nonIOS: "检测到非iOS 13+设备"
+            },
+            ko: {
+                start: "카메라 시작",
+                starting: "시작 중...",
+                reset: "초기화",
+                shutter: "사진 촬영",
+                fixBg: "배경 고정",
+                permissionTitle: "AR을 사용하려면 센서 권한이 필요합니다.\n페이지를 새로고침하여 다시 시도해주세요.",
+                permissionError: "권한 오류: ",
+                photoSaved: "사진이 저장되었습니다!",
+                grabbed: "잡았습니다!",
+                init: "초기화 중...",
+                permissionDenied: "센서 권한: 거부됨",
+                permissionGranted: "센서 권한: 허용됨",
+                nonIOS: "iOS 13+ 이외의 기기 감지"
+            }
+        };
 
         function log(msg) {
             const el = document.getElementById('status-text');
@@ -87,11 +178,35 @@
             console.log(msg);
         }
 
-        // ---【ここを修正しました】iOS対応のカメラ開始処理 ---
+        // --- 言語切り替え関数 ---
+        function setLanguage(lang) {
+            currentLang = lang;
+            const t = translations[lang];
+
+            // UIテキスト更新
+            document.getElementById('launch-btn').innerText = t.start;
+            document.getElementById('reset-btn').innerText = t.reset;
+            document.getElementById('shutter-btn').innerText = t.shutter;
+            document.getElementById('fix-bg-btn').innerText = t.fixBg;
+            
+            // ログの初期表示更新（まだAR開始前なら）
+            if(!window.isARStarted) {
+                document.getElementById('status-text').innerText = t.init;
+            }
+
+            // ボタンの見た目更新
+            document.querySelectorAll('.lang-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById('btn-' + lang).classList.add('active');
+        }
+
+        // --- カメラ開始処理 ---
         function startCamera() {
-            // 実際の起動処理を関数化
+            const t = translations[currentLang];
+
             const runAR = () => {
-                document.getElementById('launch-btn').innerText = "Starting...";
+                document.getElementById('launch-btn').innerText = t.starting;
                 setTimeout(() => {
                     document.getElementById('launcher').style.display = 'none';
                     document.getElementById('reset-btn').style.display = 'block';
@@ -111,24 +226,22 @@
                 DeviceOrientationEvent.requestPermission()
                     .then(response => {
                         if (response === 'granted') {
-                            log("Sensor Permission: Granted");
+                            log(t.permissionGranted);
                             runAR();
                         } else {
-                            alert('ARを利用するにはセンサーの許可が必要です。\nページをリロードして再度試してください。');
-                            log("Sensor Permission: Denied");
+                            alert(t.permissionTitle);
+                            log(t.permissionDenied);
                         }
                     })
                     .catch(e => {
                         console.error(e);
-                        alert('Error requesting permission: ' + e);
+                        alert(t.permissionError + e);
                     });
             } else {
-                // iOS 13未満、またはAndroid/PCの場合
-                log("Non-iOS 13+ device detected.");
+                log(t.nonIOS);
                 runAR();
             }
         }
-        // ----------------------------------------------------
 
         function takePhoto() {
             const scene = document.querySelector('a-scene');
@@ -146,9 +259,7 @@
             if(!camera || !nijo) return;
 
             const cameraPos = camera.object3D.position;
-            // カメラの向きに合わせて前方を計算
             const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.object3D.quaternion).multiplyScalar(2.5);
-            // 高さ（Y軸）の影響を少し抑えたい場合は forward.y を0にする等の調整も可能ですが、今回はそのまま
             
             const centerPos = cameraPos.clone().add(forward);
             
@@ -180,9 +291,10 @@
                 const scene = this.el;
                 const video = document.getElementById('arjs-video');
                 const sceneCanvas = scene.renderer.domElement;
+                const t = translations[currentLang]; // 現在の言語取得
 
                 if (!video || !sceneCanvas) {
-                    log("Video or Canvas not ready for capture.");
+                    log("Video or Canvas not ready.");
                     return;
                 }
 
@@ -191,7 +303,9 @@
                     const originalBg = shutterBtn.style.background;
                     shutterBtn.style.background = "white";
                     setTimeout(() => { shutterBtn.style.background = originalBg; }, 100);
-                    log("Capturing...");
+                    
+                    // ログはシンプルに英語のままでもいいが、ここでは保存完了を通知
+                    // log("Capturing..."); 
 
                     const destW = window.innerWidth * window.devicePixelRatio;
                     const destH = window.innerHeight * window.devicePixelRatio;
@@ -228,7 +342,7 @@
                     link.click();
                     document.body.removeChild(link);
 
-                    log("Photo saved!");
+                    log(t.photoSaved); // 言語対応メッセージ
                 } catch (e) {
                     log("Photo failed: " + e.message);
                     console.error(e);
@@ -265,7 +379,6 @@
 
                 this.createHitBox = () => {
                     if (this.hitBoxMesh) return;
-
                     const obj = this.el.object3D;
                     obj.updateMatrixWorld(true);
 
@@ -279,7 +392,6 @@
                     }
 
                     const geometry = new THREE.BoxGeometry(size.x * 1.3, size.y * 1.3, size.z * 1.3);
-                    
                     const material = new THREE.MeshBasicMaterial({
                         color: 0xff0000, 
                         opacity: 0.0,
@@ -287,21 +399,17 @@
                         visible: true,
                         depthTest: false
                     });
-                    
                     this.hitBoxMesh = new THREE.Mesh(geometry, material);
-                    
                     const center = new THREE.Vector3();
                     box.getCenter(center);
                     const localCenter = obj.worldToLocal(center.clone());
                     this.hitBoxMesh.position.copy(localCenter);
-
                     this.el.object3D.add(this.hitBoxMesh);
-                    log("HitBox Ready (Invisible)");
+                    log("HitBox Ready");
                 };
 
                 this.isTouchInsideBox = (touchX, touchY) => {
                     if (!this.hitBoxMesh || !this.camera) return false;
-
                     const mesh = this.hitBoxMesh;
                     mesh.updateMatrixWorld();
                     this.camera.updateMatrixWorld();
@@ -343,39 +451,29 @@
                     if(this.hitBoxMesh) this.hitBoxMesh.material.opacity = 0.0;
                 };
 
-                const getDistance = (t1, t2) => {
-                    const dx = t1.pageX - t2.pageX;
-                    const dy = t1.pageY - t2.pageY;
-                    return Math.sqrt(dx * dx + dy * dy);
-                };
-                const getMidX = (t1, t2) => { return (t1.clientX + t2.clientX) / 2; };
-
                 window.addEventListener('touchstart', (e) => {
                     if (!window.isARStarted) return;
-
                     if (!this.camera) this.camera = this.el.sceneEl.camera;
                     if (!this.hitBoxMesh) return;
 
                     const touch = e.touches[0];
-                    
                     if (this.isTouchInsideBox(touch.clientX, touch.clientY)) {
                         if (e.cancelable) e.preventDefault();
                         this.isActive = true;
-                        
                         this.hitBoxMesh.material.opacity = 0.3;
-                        log("Grabbed!");
+                        
+                        log(translations[currentLang].grabbed); // 言語対応メッセージ
 
                         if (e.touches.length === 1) {
                             this.mode = 'move';
                             this.startFingerX = touch.clientX;
                             this.startFingerY = touch.clientY;
                             this.startObjPos.copy(this.el.object3D.position);
-
                         } else if (e.touches.length === 2) {
                             this.mode = 'scale_rotate';
-                            this.startDistance = getDistance(e.touches[0], e.touches[1]);
+                            this.startDistance = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
                             this.baseScale.copy(this.el.object3D.scale);
-                            this.startMidX = getMidX(e.touches[0], e.touches[1]);
+                            this.startMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
                             this.startRotationY = this.el.object3D.rotation.y;
                         }
                     }
@@ -388,8 +486,8 @@
                     const touches = e.touches;
 
                     if (touches.length === 2) {
-                        const currentDist = getDistance(touches[0], touches[1]);
-                        const currentMidX = getMidX(touches[0], touches[1]);
+                        const currentDist = Math.hypot(touches[0].pageX - touches[1].pageX, touches[0].pageY - touches[1].pageY);
+                        const currentMidX = (touches[0].clientX + touches[1].clientX) / 2;
 
                         if (this.mode !== 'scale_rotate') {
                             this.mode = 'scale_rotate';
@@ -419,11 +517,9 @@
                             this.startObjPos.copy(this.el.object3D.position);
                             return;
                         }
-
                         const t = touches[0];
                         const dx = t.clientX - this.startFingerX;
                         const dy = t.clientY - this.startFingerY;
-
                         this.el.object3D.position.x = this.startObjPos.x + (dx * this.moveSpeed);
                         this.el.object3D.position.y = this.startObjPos.y - (dy * this.moveSpeed);
                     }
@@ -442,11 +538,25 @@
             }
         });
 
+        // ページ読み込み完了時に日本語を初期設定
+        window.addEventListener('DOMContentLoaded', () => {
+            setLanguage('ja');
+        });
+
     </script>
 </head>
 
 <body>
-    <div id="launcher"><button id="launch-btn" onclick="startCamera()">START CAMERA</button></div>
+    <div id="launcher">
+        <div id="lang-container">
+            <button id="btn-ja" class="lang-btn active" onclick="setLanguage('ja')">日本語</button>
+            <button id="btn-en" class="lang-btn" onclick="setLanguage('en')">English</button>
+            <button id="btn-zh" class="lang-btn" onclick="setLanguage('zh')">中文</button>
+            <button id="btn-ko" class="lang-btn" onclick="setLanguage('ko')">한국어</button>
+        </div>
+
+        <button id="launch-btn" onclick="startCamera()">START CAMERA</button>
+    </div>
     
     <button id="reset-btn" onclick="resetPositions()">RESET</button>
     <button id="fix-bg-btn" onclick="forceTransparent()">Fix BG</button>
