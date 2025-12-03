@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AR Min Nijo (Multi-Language Fixed)</title>
+    <title>AR Min Nijo (Final)</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -56,12 +56,12 @@
 
         #launch-btn {
             padding: 20px 50px; font-size: 20px; font-weight: bold; color: white;
-            background: blue; border: none; border-radius: 50px; cursor: pointer;
+            background: #00FF00; border: none; border-radius: 50px; cursor: pointer;
             -webkit-tap-highlight-color: transparent;
             box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
         }
 
-        /* UIボタンのz-indexを明示的に最前面へ */
+        /* UIボタン */
         #reset-btn {
             position: fixed; 
             top: 20px; 
@@ -72,15 +72,6 @@
             color: white; border: 2px solid white; border-radius: 40px;
             font-size: 16px; font-weight: bold; cursor: pointer; display: none;
             -webkit-tap-highlight-color: transparent;
-        }
-
-        #fix-bg-btn {
-            position: fixed; 
-            top: 80px;
-            right: 20px; 
-            z-index: 99999;
-            padding: 10px; background: rgba(0,0,0,0.5); color: #ccc;
-            border: 1px solid #888; border-radius: 8px; font-size: 12px; display: none;
         }
 
         #shutter-btn {
@@ -113,7 +104,6 @@
                 starting: "起動中...",
                 reset: "リセット",
                 shutter: "撮影",
-                fixBg: "背景固定",
                 permissionTitle: "ARを利用するにはセンサーの許可が必要です。\nページをリロードして再度試してください。",
                 permissionError: "権限エラー: ",
                 photoSaved: "写真を保存しました！",
@@ -128,7 +118,6 @@
                 starting: "Starting...",
                 reset: "RESET",
                 shutter: "TAKE PHOTO",
-                fixBg: "Fix BG",
                 permissionTitle: "Sensor permission is required for AR.\nPlease reload and try again.",
                 permissionError: "Permission Error: ",
                 photoSaved: "Photo saved!",
@@ -143,7 +132,6 @@
                 starting: "启动中...",
                 reset: "重置",
                 shutter: "拍照",
-                fixBg: "固定背景",
                 permissionTitle: "AR需要传感器权限。\n请刷新页面重试。",
                 permissionError: "权限错误: ",
                 photoSaved: "照片已保存！",
@@ -158,7 +146,6 @@
                 starting: "시작 중...",
                 reset: "초기화",
                 shutter: "사진 촬영",
-                fixBg: "배경 고정",
                 permissionTitle: "AR을 사용하려면 센서 권한이 필요합니다.\n페이지를 새로고침하여 다시 시도해주세요.",
                 permissionError: "권한 오류: ",
                 photoSaved: "사진이 저장되었습니다!",
@@ -183,7 +170,6 @@
             document.getElementById('launch-btn').innerText = t.start;
             document.getElementById('reset-btn').innerText = t.reset;
             document.getElementById('shutter-btn').innerText = t.shutter;
-            document.getElementById('fix-bg-btn').innerText = t.fixBg;
             
             if(!window.isARStarted) {
                 document.getElementById('status-text').innerText = t.init;
@@ -202,7 +188,6 @@
                 setTimeout(() => {
                     document.getElementById('launcher').style.display = 'none';
                     document.getElementById('reset-btn').style.display = 'block';
-                    document.getElementById('fix-bg-btn').style.display = 'block';
                     document.getElementById('shutter-btn').style.display = 'block';
                     
                     const scene = document.querySelector('a-scene');
@@ -261,11 +246,6 @@
             if(nijo.components['drag-wrapper']) nijo.components['drag-wrapper'].reset();
             
             log("Position Reset");
-        }
-
-        function forceTransparent() {
-            document.body.style.backgroundColor = 'transparent';
-            document.querySelector('.a-canvas').style.backgroundColor = 'transparent';
         }
 
         AFRAME.registerComponent('photo-capture', {
@@ -442,7 +422,6 @@
                 window.addEventListener('touchstart', (e) => {
                     if (!window.isARStarted) return;
 
-                    // 【修正点】: タッチ対象がボタン(またはその内部要素)の場合は、オブジェクト操作を行わない
                     if (e.target.tagName === 'BUTTON' || e.target.closest('button')) {
                         return;
                     }
@@ -552,7 +531,6 @@
     </div>
     
     <button id="reset-btn" onclick="resetPositions()">RESET</button>
-    <button id="fix-bg-btn" onclick="forceTransparent()">Fix BG</button>
     <button id="shutter-btn" onclick="takePhoto()">TAKE PHOTO</button>
 
     <div id="status-text">Initializing...</div>
